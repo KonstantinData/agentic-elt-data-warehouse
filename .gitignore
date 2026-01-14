@@ -26,11 +26,7 @@ build/
 
 # === Artifacts & Run Outputs ===
 # Exclude generated ELT run folders and outputs
-artifacts/bronze/elt/
-artifacts/silver/
-artifacts/gold/
-artifacts/tmp/
-artifacts/reports/
+
 
 # Keep structure placeholders
 !artifacts/bronze/_checks/.gitkeep
@@ -83,4 +79,3 @@ htmlcov/
 # isort
 .isort.cfg
 
-raw/
