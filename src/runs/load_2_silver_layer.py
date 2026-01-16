@@ -2,19 +2,19 @@
 load_2_silver_layer.py
 
 DESCRIPTION
-Builds the Silver layer from the latest (or a specified) Bronze run, using the same
+Builds the Silver layer from the orchestrator-provided run_id, using the same
 folder structure convention:
 
-  artifacts/bronze/<bronze_run_id>/data/*.csv   -> input  (Raw Data / Bronze)
-  artifacts/silver/<silver_run_id>/data/*.csv   -> output (Cleaned, Standardized Data / Silver)
-  artifacts/silver/<silver_run_id>/reports/*    -> human report
+  artifacts/bronze/<run_id>/data/*.csv   -> input  (Raw Data / Bronze)
+  artifacts/silver/<run_id>/data/*.csv   -> output (Cleaned, Standardized Data / Silver)
+  artifacts/silver/<run_id>/reports/*    -> human report
 
 Each Silver run produces:
-  artifacts/silver/<timestamp>_#<bronze_suffix>/
+  artifacts/silver/<run_id>/
     data/
       *.csv           (cleaned, standardized copies)
-      metadata.yaml   (run + table metadata, lineage)
-      run_log.txt     (technical log)
+    metadata.yaml     (run + table metadata, lineage)
+    run_log.txt       (technical log)
     reports/
       elt_report.html (HTML run report)
 
@@ -35,7 +35,6 @@ TRANSFORMATION SCOPE (Bronze -> Silver)
 IMPORTANT
 - No Gold-layer semantics (no aggregations, no star schema, no business KPI tables).
 - Output structure and grain per file remains 1:1 zur Bronze-Tabelle.
-- Silver run_id = <UTC timestamp>_#<bronze_suffix>  (suffix copied from bronze run_id).
 """
 
 from __future__ import annotations
@@ -62,15 +61,6 @@ SRC_ROOT = CURRENT_FILE.parents[1]  # .../src
 
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
-
-# Now we can import the report agent from src/agents/load_2_report_agent.py
-try:
-    from agents.load_2_silver_layer_draft_agent import run_report_agent
-except Exception:
-    # We will handle failures again in main(); this prevents import-time crash
-    run_report_agent = None  # type: ignore
-
-
 
 # -----------------------------
 # Paths (relative to project root)
@@ -139,30 +129,13 @@ def write_html_report(context: Dict[str, Any], path: str) -> None:
         f.write(html)
 
 
-def find_latest_bronze_run_id() -> str:
-    if not os.path.exists(BRONZE_ROOT):
-        raise FileNotFoundError(f"Bronze root not found: {BRONZE_ROOT}")
-
-    run_ids: List[str] = []
-    for name in os.listdir(BRONZE_ROOT):
-        if os.path.isdir(os.path.join(BRONZE_ROOT, name)) and RUN_ID_RE.match(name):
-            run_ids.append(name)
-
-    if not run_ids:
-        raise FileNotFoundError(f"No bronze runs found in: {BRONZE_ROOT}")
-
-    # Lexicographic sort works with YYYYMMDD_HHMMSS prefix
-    return sorted(run_ids)[-1]
-
-
-def make_silver_run_id_from_bronze(bronze_run_id: str, now: Optional[datetime] = None) -> str:
-    m = RUN_ID_RE.match(bronze_run_id)
-    if not m:
-        raise ValueError(f"Invalid bronze run id format: {bronze_run_id}")
-
-    suffix = m.group("suffix")
-    now_dt = now or utc_now()
-    return f"{now_dt.strftime('%Y%m%d_%H%M%S')}_#{suffix}"
+def resolve_run_id() -> str:
+    run_id = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("RUN_ID")
+    if not run_id:
+        raise ValueError("run_id is required (pass as CLI arg or RUN_ID env var).")
+    if not RUN_ID_RE.match(run_id):
+        raise ValueError(f"Invalid run_id format: {run_id}")
+    return run_id
 
 
 # -----------------------------
@@ -427,16 +400,15 @@ HTML_REPORT_TEMPLATE = """\
 # Main
 # -----------------------------
 def main() -> int:
-    # bronze_run_id can be passed as CLI arg; otherwise latest bronze is used.
-    bronze_run_id = sys.argv[1] if len(sys.argv) > 1 else find_latest_bronze_run_id()
+    run_id = resolve_run_id()
+    bronze_run_id = run_id
 
-    bronze_data_dir = os.path.join(BRONZE_ROOT, bronze_run_id, "data")
+    bronze_data_dir = os.path.join(BRONZE_ROOT, run_id, "data")
     if not os.path.exists(bronze_data_dir):
         raise FileNotFoundError(f"Bronze data dir not found: {bronze_data_dir}")
 
-    # Build silver run_id (new timestamp + bronze suffix)
     start_dt = utc_now()
-    silver_run_id = make_silver_run_id_from_bronze(bronze_run_id, now=start_dt)
+    silver_run_id = run_id
 
     # Create silver folders
     elt_dir = os.path.join(SILVER_ROOT, silver_run_id)
@@ -445,8 +417,8 @@ def main() -> int:
     ensure_dir(data_dir)
     ensure_dir(report_dir)
 
-    # Logging (run_log.txt under data/)
-    log_file = os.path.join(data_dir, "run_log.txt")
+    # Logging (run_log.txt under run root)
+    log_file = os.path.join(elt_dir, "run_log.txt")
 
     def log(msg: str) -> None:
         ts = iso_utc(utc_now())
@@ -604,8 +576,8 @@ def main() -> int:
         "files_failed": failed,
     }
 
-        # Persist metadata.yaml under data/
-    write_yaml(metadata, os.path.join(data_dir, "metadata.yaml"))
+    # Persist metadata.yaml under run root
+    write_yaml(metadata, os.path.join(elt_dir, "metadata.yaml"))
 
     # Write HTML report under reports/
     report_html_path = os.path.join(report_dir, "elt_report.html")
@@ -617,21 +589,6 @@ def main() -> int:
         "results": results,
     }
     write_html_report(report_ctx, report_html_path)
-
-    # Call LLM-based report agent (if import was successful)
-    if run_report_agent is not None:
-        try:
-            log("CALL agents.load_2_report_agent.run_report_agent ...")
-            run_report_agent(
-                run_id=bronze_run_id,
-                silver_run_id=silver_run_id,
-            )
-            log("load_2_report_agent finished successfully.")
-        except Exception as e:
-            # LLM/report failures must NOT break the ETL run
-            log(f"WARNING: load_2_report_agent failed: {type(e).__name__}: {e}")
-    else:
-        log("WARNING: run_report_agent could not be imported; skipping LLM report generation.")
 
     log(
         f"RUN_END run_id={silver_run_id} "
