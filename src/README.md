@@ -35,9 +35,10 @@ The code is designed for modularity, extensibility, and automated execution — 
 ```
 src/
 ├── agents/
-│   ├── load_2_report_agent.py
+│   ├── load_2_silver_layer_builder_agent.py
+│   ├── load_2_silver_layer_draft_agent.py
 │   ├── load_3_gold_layer_builder_agent.py
-│   └── load_3_gold_layer_planning_agent.py
+│   └── load_3_gold_layer_draft_agent.py
 ├── runs/
 │   ├── load_1_bronze_layer.py
 │   ├── load_2_silver_layer.py
@@ -54,25 +55,38 @@ src/
 
 ### Agents
 
-The `agents/` folder encapsulates logic for orchestration tasks beyond simple running — typically responsible for building, planning, and reporting steps.
+The `agents/` folder encapsulates logic for orchestration tasks beyond simple running — typically responsible for drafting and building steps.
 
-#### `load_2_report_agent.py`
+#### `load_2_silver_layer_draft_agent.py`
 
 **Purpose:**
-Generates and orchestrates reporting artifacts based on Silver layer outputs.
+Drafts the plan for Silver layer build steps.
 
 **Responsibilities:**
 
-* Aggregates metrics and business KPIs
-* Produces reporting tables or dashboards
-* Validates Silver layer quality
+* Reviews Bronze layer outputs
+* Defines objectives and steps for Silver transformations
+* Outputs structured build plans (e.g., JSON or config)
 
 ---
 
-#### `load_3_gold_layer_planning_agent.py`
+#### `load_2_silver_layer_builder_agent.py`
 
 **Purpose:**
-Performs planning for Gold layer model construction.
+Constructs the Silver layer artifacts according to the draft plan.
+
+**Responsibilities:**
+
+* Loads templates and mappings
+* Renders transformation definitions
+* Executes builds and writes outputs
+
+---
+
+#### `load_3_gold_layer_draft_agent.py`
+
+**Purpose:**
+Performs drafting for Gold layer model construction.
 
 **Responsibilities:**
 
