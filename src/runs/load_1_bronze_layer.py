@@ -56,6 +56,10 @@ RAW_ERP = os.environ.get("RAW_ERP", RAW_ERP)
 BRONZE_ROOT = os.environ.get("BRONZE_ROOT", BRONZE_ROOT)
 
 
+STATE_DIR = os.path.join(BRONZE_ROOT, "_state")
+STATE_PATH = os.path.join(STATE_DIR, "last_ingested.yaml")
+
+
 HTML_REPORT_TEMPLATE = """\
 <html>
 <head><title>Bronze ELT Report - {{ run_id }}</title></head>
@@ -76,6 +80,7 @@ HTML_REPORT_TEMPLATE = """\
   <th>size(bytes)</th>
   <th>mtime(UTC)</th>
   <th>sha256</th>
+  <th>skip reason</th>
   <th>error</th>
 </tr>
 {% for r in results %}
@@ -89,6 +94,7 @@ HTML_REPORT_TEMPLATE = """\
   <td>{{ r.file_size_bytes or "" }}</td>
   <td>{{ r.file_mtime_utc or "" }}</td>
   <td style="font-family: monospace;">{{ r.sha256 or "" }}</td>
+  <td>{{ r.skip_reason or "" }}</td>
   <td>{{ r.error_message or "" }}</td>
 </tr>
 {% endfor %}
@@ -145,6 +151,12 @@ def write_html_report(context: Dict[str, Any], path: str) -> None:
     with open(path, "w", encoding="utf-8") as f:
         f.write(html)
 
+def read_state(path: str) -> Dict[str, Any]:
+    if not os.path.exists(path):
+        return {"files": {}}
+    with open(path, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f) or {"files": {}}
+
 
 # -----------------------------
 # Main
@@ -160,6 +172,7 @@ def main() -> None:
 
     ensure_dir(data_dir)
     ensure_dir(report_dir)
+    ensure_dir(STATE_DIR)
 
     log_path = os.path.join(data_dir, "run_log.txt")
 
@@ -193,6 +206,9 @@ def main() -> None:
     }
 
     results: List[Dict[str, Any]] = []
+    state = read_state(STATE_PATH)
+    state_files = state.get("files", {})
+    next_state_files: Dict[str, Any] = {}
 
     def process_file(src_root: str, filename: str, source_system: str) -> None:
         src_path = os.path.join(src_root, filename)
@@ -203,6 +219,7 @@ def main() -> None:
             "source_system": source_system,
             "source_path": src_path,
             "status": "FAILED",
+            "skip_reason": None,
             "rows": 0,
             "schema": [],
             "dtypes": {},
@@ -224,37 +241,52 @@ def main() -> None:
             rec.update(st)
             rec["sha256"] = sha256_file(src_path)
 
-            # Read to profile (rows/schema/dtypes)
-            t0 = time.perf_counter()
-            df = pd.read_csv(src_path)
-            rec["read_duration_s"] = time.perf_counter() - t0
+            prev_state = state_files.get(src_path)
+            if prev_state and prev_state.get("file_mtime_utc") == rec["file_mtime_utc"] and prev_state.get("sha256") == rec["sha256"]:
+                rec["status"] = "SKIPPED"
+                rec["skip_reason"] = "unchanged"
+                log(f"SKIPPED file={filename} source={source_system} reason=unchanged")
+            else:
+                # Read to profile (rows/schema/dtypes)
+                t0 = time.perf_counter()
+                df = pd.read_csv(src_path)
+                rec["read_duration_s"] = time.perf_counter() - t0
 
-            rec["rows"] = int(len(df))
-            rec["schema"] = list(df.columns)
-            rec["dtypes"] = {c: str(t) for c, t in df.dtypes.items()}
+                rec["rows"] = int(len(df))
+                rec["schema"] = list(df.columns)
+                rec["dtypes"] = {c: str(t) for c, t in df.dtypes.items()}
 
-            # Copy raw file byte-for-byte into bronze artifacts
-            t1 = time.perf_counter()
-            shutil.copy2(src_path, dest_path)
-            rec["copy_duration_s"] = time.perf_counter() - t1
+                # Copy raw file byte-for-byte into bronze artifacts
+                t1 = time.perf_counter()
+                shutil.copy2(src_path, dest_path)
+                rec["copy_duration_s"] = time.perf_counter() - t1
 
-            rec["status"] = "SUCCESS"
-            log(
-                f"SUCCESS file={filename} source={source_system} "
-                f"rows={rec['rows']} read={rec['read_duration_s']:.3f}s copy={rec['copy_duration_s']:.3f}s"
-            )
+                rec["status"] = "SUCCESS"
+                log(
+                    f"SUCCESS file={filename} source={source_system} "
+                    f"rows={rec['rows']} read={rec['read_duration_s']:.3f}s copy={rec['copy_duration_s']:.3f}s"
+                )
 
         except Exception as e:
             rec["error_type"] = type(e).__name__
             rec["error_message"] = str(e)
             log(f"ERROR file={filename} source={source_system} {rec['error_type']}: {rec['error_message']}")
             log(traceback.format_exc())
+        else:
+            if rec["status"] in {"SUCCESS", "SKIPPED"}:
+                next_state_files[src_path] = {
+                    "source_system": source_system,
+                    "file_mtime_utc": rec["file_mtime_utc"],
+                    "sha256": rec["sha256"],
+                    "file_size_bytes": rec["file_size_bytes"],
+                }
 
         # Persist per-table metadata
         metadata["tables"][filename] = {
             "source_system": rec["source_system"],
             "source_path": rec["source_path"],
             "status": rec["status"],
+            "skip_reason": rec["skip_reason"],
             "rows": rec["rows"],
             "schema": rec["schema"],
             "dtypes": rec["dtypes"],
@@ -281,7 +313,8 @@ def main() -> None:
 
     # Summary
     ok = sum(1 for r in results if r["status"] == "SUCCESS")
-    failed = len(results) - ok
+    skipped = sum(1 for r in results if r["status"] == "SKIPPED")
+    failed = len(results) - ok - skipped
 
     end_dt = utc_now()
     metadata["run"]["ended_utc"] = iso_utc(end_dt)
@@ -290,6 +323,7 @@ def main() -> None:
     metadata["summary"] = {
         "files_total": len(results),
         "files_success": ok,
+        "files_skipped": skipped,
         "files_failed": failed,
     }
 
@@ -304,6 +338,13 @@ def main() -> None:
         "results": results,
     }
     write_html_report(report_ctx, os.path.join(report_dir, "elt_report.html"))
+
+    if failed == 0:
+        state_payload = {
+            "updated_utc": iso_utc(end_dt),
+            "files": next_state_files,
+        }
+        write_yaml(state_payload, STATE_PATH)
 
     log(f"RUN_END run_id={run_id} duration_s={metadata['run']['duration_s']:.3f} success={ok} failed={failed}")
 
