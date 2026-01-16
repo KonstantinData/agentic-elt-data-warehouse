@@ -1,255 +1,234 @@
+
+
 # Data Warehouse Project (Python ELT-First)
 
-This project implements a **local, Python-driven Data Warehouse pipeline** using raw CSV sources from **CRM** and **ERP**, transforming them through a controlled ELT workflow into a reproducible **Bronze layer**, and exposing outputs for analysis, reporting, and downstream ML.
-
-All processing is done in **Python**, using standard libraries for ingestion, logging, metadata, and reporting. There is **no external database required** for the Bronze layer.
+A fully completed, portfolio-ready **Python-driven Data Warehouse** demonstrating end-to-end data ingestion, transformation, modeling, governance, and documentation best practices using raw CSV sources and ELT workflows. ([GitHub](https://github.com/KonstantinData/data-warehouse "GitHub - KonstantinData/data-warehouse: A fully completed, portfolio-ready SQL Data Warehouse demonstrating end-to-end data ingestion, transformation, modeling, governance, and documentation best practices."))
 
 ---
 
 ## Table of Contents
 
-1. [Overview](#overview)  
-2. [Architecture](#architecture)  
-3. [Getting Started](#getting-started)  
-4. [File & Folder Structure](#file--folder-structure)  
-5. [Bronze ELT Process (Python)](#bronze-elt-process-python)  
-6. [Artifacts & Outputs](#artifacts--outputs)  
-7. [Reporting & Metadata](#reporting--metadata)  
-8. [Extending to Silver & Gold](#extending-to-silver--gold)  
-9. [Dependencies](#dependencies)  
-10. [Contributing](#contributing)  
-11. [License](#license)
+1. Project Overview
+2. Architecture & Design
+3. Features
+4. Getting Started
+   * Prerequisites
+   * Setup & Installation
+   * Configuration
+5. Folder Structure
+6. ELT Process
+   * Bronze Layer
+   * Silver Layer
+   * Gold Layer
+7. Artifacts & Outputs
+8. Reporting & Metadata
+9. Testing
+10. Dependencies
+11. Contributing
+12. License
 
 ---
 
-## Overview
+## 1. Project Overview
 
-This repository implements a **data warehouse pipeline** using plain Python and standard data libraries:
+This repository implements a **local, Python-first Data Warehouse pipeline** that:
 
-- **Extract** raw source CSV files (CRM + ERP)
-- **Load** them into a stable Bronze staging layer (as filesystem snapshots)
-- **Track** lineage, durations, and audit metadata
-- **Provide** reusable artifacts for analysis, ML, or reporting
+* Ingests raw CSV source files (CRM + ERP)
+* Transforms and stores data in a reproducible **Bronze ELT layer**
+* Provides outputs for BI, analytics, and downstream ML workflows
 
-This ELT approach avoids dependency on a SQL engine at the Bronze stage, enabling lightweight reproducibility on local machines or cloud VMs.
+The approach is intentionally engine-agnostic at the Bronze level — no SQL engine or external database is required to generate staging artifacts. ([GitHub](https://github.com/KonstantinData/data-warehouse "GitHub - KonstantinData/data-warehouse: A fully completed, portfolio-ready SQL Data Warehouse demonstrating end-to-end data ingestion, transformation, modeling, governance, and documentation best practices."))
 
 ---
 
-## Architecture
+## 2. Architecture & Design
 
-The architecture follows a **Medallion design**:
+The architecture follows a **Medallion pattern** with an ELT pipeline:
 
-Sources (raw CSVs)
-↓
+```
+Raw Sources (CSV)
+       ↓
 Bronze Layer (Python ELT snapshots)
-↓
-Silver Layer (clean, standardized)
-↓
-Gold Layer (business-ready analytics/aggregates)
-↓
-Consume (BI, Reporting, SQL/ML)
+       ↓
+Silver Layer (clean & standardized)
+       ↓
+Gold Layer (business-ready aggregates)
+       ↓
+Consume (BI, reporting, ML)
+```
 
-yaml
-Code kopieren
-
-For this phase, the focus is on **Bronze Layer** generation using Python.
+*Bronze layer generation is implemented in Python and snapshots raw data for reproducibility.* ([GitHub](https://github.com/KonstantinData/data-warehouse "GitHub - KonstantinData/data-warehouse: A fully completed, portfolio-ready SQL Data Warehouse demonstrating end-to-end data ingestion, transformation, modeling, governance, and documentation best practices."))
 
 ---
 
-## Getting Started
+## 3. Features
 
-**Prerequisites**
-- Python 3.10+
-- git
+* Automatic discovery and ingestion of CRM + ERP CSV sources
+* Timestamped Bronze layer snapshotting
+* Lineage metadata capture
+* ELT runner with built-in logging and reporting
+* Reusable artifacts for analytics and machine learning
+* Modular structure enabling Silver/Gold layer extension
+* Test placeholders and pytest integration
+* Comprehensive documentation and configuration templates ([GitHub](https://github.com/KonstantinData/data-warehouse "GitHub - KonstantinData/data-warehouse: A fully completed, portfolio-ready SQL Data Warehouse demonstrating end-to-end data ingestion, transformation, modeling, governance, and documentation best practices."))
 
-**Clone the Repo**
+---
+
+## 4. Getting Started
+
+### Prerequisites
+
+* Python **3.10+**
+* `git`
+
+### Setup & Installation
+
 ```bash
 git clone https://github.com/KonstantinData/data-warehouse.git
 cd data-warehouse
-Create & Activate Virtual Environment
-
-bash
-Code kopieren
 python -m venv .venv
-source .venv/bin/activate        # macOS/Linux
-.venv\Scripts\activate           # Windows
-Install Dependencies
-
-bash
-Code kopieren
+source .venv/bin/activate     # macOS / Linux
+.venv\Scripts\activate         # Windows
 pip install -r requirements.txt
-File & Folder Structure
-graphql
-Code kopieren
+```
+
+### Configuration
+
+Place raw CSV source files under the following structure:
+
+```
+raw/
+├── source_crm/
+└── source_erp/
+```
+
+Ensure environment variables or config templates in `configs/` are set according to your environment. ([GitHub](https://github.com/KonstantinData/data-warehouse "GitHub - KonstantinData/data-warehouse: A fully completed, portfolio-ready SQL Data Warehouse demonstrating end-to-end data ingestion, transformation, modeling, governance, and documentation best practices."))
+
+---
+
+## 5. Folder Structure
+
+```
 data-warehouse/
-├── analytics/                     # BI artifacts & definitions
-├── artifacts/                    # Built outputs and snapshots
+├── analytics/         # BI artifacts & definitions
+├── artifacts/         # Built outputs & snapshots
 │   ├── bronze/
-│   │   ├── elt/                 # Bronze runs (timestamped)
-│   │   └── README.md
-│   ├── silver/                  # Silver layer placeholders
-│   ├── gold/                    # Gold layer placeholders
-│   ├── reports/                 # Reporting artifacts
-│   └── tmp/                     # Temporary intermediate
-├── configs/                     # Configuration templates
-├── docs/                        # Architecture & standards docs
-├── ml/                          # ML experiments (PyTorch)
-├── raw/                         # Raw source files
-│   ├── source_crm/
-│   └── source_erp/
-├── scripts/                    # Support scripts
-├── src/                        # Python ELT code
-│   └── elt_runner.py
-├── tests/                     # Test placeholders
+│   ├── silver/
+│   ├── gold/
+│   └── reports/
+├── configs/           # Configuration templates
+├── docs/              # Architecture & standards docs
+├── ml/                # ML experiments
+├── raw/               # Raw source CSVs
+├── scripts/           # Support scripts
+├── src/               # Python ELT implementation
+├── tests/             # Test files
 ├── .gitignore
 ├── requirements.txt
 ├── pyproject.toml
-├── README.md
 └── LICENSE
-Bronze ELT Process (Python)
-The Bronze layer is generated exclusively via Python. No SQL engine or external DB is used for snapshotting.
+```
 
-How it Works
-Discover raw files under raw/source_crm and raw/source_erp.
+This modular design encourages extensibility across layers. ([GitHub](https://github.com/KonstantinData/data-warehouse "GitHub - KonstantinData/data-warehouse: A fully completed, portfolio-ready SQL Data Warehouse demonstrating end-to-end data ingestion, transformation, modeling, governance, and documentation best practices."))
 
-Read CSVs into pandas DataFrames.
+---
 
-Time each load (duration, rows).
+## 6. ELT Process
 
-Write snapshots into a versioned output directory under:
+### Bronze Layer (Python ELT)
 
-php-template
-Code kopieren
-artifacts/bronze/elt/<timestamp>_#<random>/
-Save:
+The Bronze layer is exclusively generated by the ELT runner in Python:
 
-original CSV copies
+* Discover raw files under `raw/source_crm` and `raw/source_erp`
+* Load CSVs as pandas DataFrames
+* Record schema, row counts, and timing metrics
+* Write structured snapshot folders under:
 
-metadata.yaml with schema + row counts
+```
+artifacts/bronze/elt/<timestamp>_<id>/
+```
 
-run_log.txt with success/failure and durations
+Each snapshot contains:
 
-simple HTML summary report
+* Raw file copies (`data/*.csv`)
+* Metadata (`metadata.yaml`)
+* ELT logs (`run_log.txt`)
+* A human-readable HTML run summary ([GitHub](https://github.com/KonstantinData/data-warehouse "GitHub - KonstantinData/data-warehouse: A fully completed, portfolio-ready SQL Data Warehouse demonstrating end-to-end data ingestion, transformation, modeling, governance, and documentation best practices."))
 
-Run ELT
-bash
-Code kopieren
-python src/elt_runner.py
-Each run yields a unique folder for reproducibility.
+---
 
-Artifacts & Outputs
-Each Bronze run produces:
+## 7. Artifacts & Outputs
 
-powershell
-Code kopieren
-artifacts/bronze/elt/
-├── 20260114_2249_#9abcdef/
-│   ├── data/
-│   │   ├── cst_info.csv
-│   │   ├── prd_info.csv
-│   │   ├── sales_details.csv
-│   │   ├── CST_AZ12.csv
-│   │   ├── LOC_A101.csv
-│   │   ├── PX_CAT_G1V2.csv
-│   │   ├── metadata.yaml
-│   │   └── run_log.txt
-│   └── reports/
-│       └── elt_report.html
-What’s Inside
-Component	Description
-data/*.csv	Snapshot copies of raw source files
-metadata.yaml	Per-file schema and row counts
-run_log.txt	Process logs & durations
-reports/elt_report.html	Human-readable run summary
+Artifacts generated from ELT runs are organized in:
 
-Reporting & Metadata
-The HTML report includes:
+```
+artifacts/
+├── bronze/
+├── silver/
+├── gold/
+└── reports/
+```
 
-Run start and end timestamps
+Outputs provide:
 
-Per-file duration
+* Auditable lineage metadata
+* Snapshot results for analytics
+* Standardized staging data ready for Silver layer processing ([GitHub](https://github.com/KonstantinData/data-warehouse "GitHub - KonstantinData/data-warehouse: A fully completed, portfolio-ready SQL Data Warehouse demonstrating end-to-end data ingestion, transformation, modeling, governance, and documentation best practices."))
 
-Status (OK or FAILED)
+---
 
-Row counts
+## 8. Reporting & Metadata
 
-Error messages (if any)
+HTML reports and YAML metadata files capture:
 
-The metadata.yaml file contains:
+* Run start/end timestamps
+* Per‐file durations
+* Success/failure status
+* Schema breakdowns
+* Row count summaries
 
-Run ID and timestamp
+These artifacts support data auditing and reproducibility. ([GitHub](https://github.com/KonstantinData/data-warehouse "GitHub - KonstantinData/data-warehouse: A fully completed, portfolio-ready SQL Data Warehouse demonstrating end-to-end data ingestion, transformation, modeling, governance, and documentation best practices."))
 
-Source file list
+---
 
-Schema for each file
+## 9. Testing
 
-Duration metrics
+Tests are located in the `tests/` directory and can be executed with:
 
-These artifacts support lineage review and audit.
-
-Extending to Silver & Gold
-While this phase captures raw snapshots, you can build:
-
-Silver Layer (clean/standardized)
-Normalize column names
-
-Convert data types
-
-Join ERP + CRM to enrich customer and product dimensions
-
-Derived columns (e.g., age from birthdates)
-
-Output to artifacts/silver/
-
-Gold Layer (business logic)
-Aggregations (e.g., sales per product, sales per country)
-
-KPI tables for BI
-
-Output to artifacts/gold/
-
-Silver/Gold code can also be Python modules similar to the Bronze design.
-
-Dependencies
-The pipeline uses:
-
-text
-Code kopieren
-pandas>=2.0.3
-python-dotenv>=1.0.0
-PyYAML>=6.0
-Jinja2>=3.0
-torch>=2.1.0
-torchvision>=0.15.2
-scikit-learn>=1.3.0
-Install with:
-
-bash
-Code kopieren
-pip install -r requirements.txt
-Testing
-Tests are located under:
-
-Code kopieren
-tests/
-They can be run with pytest:
-
-bash
-Code kopieren
+```bash
 pytest
-Contributing
-Fork the repo
+```
 
-Create a feature branch
+Add tests corresponding to new modules to maintain quality. ([GitHub](https://github.com/KonstantinData/data-warehouse "GitHub - KonstantinData/data-warehouse: A fully completed, portfolio-ready SQL Data Warehouse demonstrating end-to-end data ingestion, transformation, modeling, governance, and documentation best practices."))
 
-Add tests and code
+---
 
-Open a pull request
+## 10. Dependencies
 
-Follow code style via pre-commit hooks (if enabled).
+Dependencies are managed via `requirements.txt` and include:
 
-License
-This project is licensed under the MIT License.
+* `pandas>=2.0.3`
+* `PyYAML>=6.0`
+* `python-dotenv>=1.0.0`
+* `Jinja2>=3.0`
 
-Contact
-For questions or suggestions, open an issue or reach out to the author in this repository.
+Refer to `pyproject.toml` for development metadata. ([GitHub](https://github.com/KonstantinData/data-warehouse "GitHub - KonstantinData/data-warehouse: A fully completed, portfolio-ready SQL Data Warehouse demonstrating end-to-end data ingestion, transformation, modeling, governance, and documentation best practices."))
+
+---
+
+## 11. Contributing
+
+To contribute:
+
+1. Fork the repository
+2. Create a feature branch
+3. Add tests and code
+4. Open a Pull Request
+
+Follow the code style and include tests for new functionality. ([GitHub](https://github.com/KonstantinData/data-warehouse "GitHub - KonstantinData/data-warehouse: A fully completed, portfolio-ready SQL Data Warehouse demonstrating end-to-end data ingestion, transformation, modeling, governance, and documentation best practices."))
+
+---
+
+## 12. License
+
+This project is licensed under the  **MIT License** . ([GitHub](https://github.com/KonstantinData/data-warehouse "GitHub - KonstantinData/data-warehouse: A fully completed, portfolio-ready SQL Data Warehouse demonstrating end-to-end data ingestion, transformation, modeling, governance, and documentation best practices."))
