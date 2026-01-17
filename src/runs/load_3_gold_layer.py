@@ -307,16 +307,50 @@ def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
     return h.hexdigest()
 
 
+def _fsync_dir_best_effort(dir_path: Path) -> None:
+    try:
+        if os.name != "posix":
+            return
+        flags = getattr(os, "O_DIRECTORY", 0)
+        fd = os.open(str(dir_path), os.O_RDONLY | flags)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    except Exception:
+        pass
+
+
+def atomic_write_text(text: str, path: Path) -> None:
+    tmp_path = path.with_name(f".{path.name}.tmp")
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            f.write(text)
+            try:
+                f.flush()
+                os.fsync(f.fileno())
+            except OSError:
+                pass
+        os.replace(tmp_path, path)
+        _fsync_dir_best_effort(path.parent)
+    finally:
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        except Exception:
+            pass
+
+
 def write_yaml(obj: Dict[str, Any], path: Path) -> None:
     data = yaml.safe_dump(obj, sort_keys=False, allow_unicode=True)
-    with_retry(lambda: path.write_text(data, encoding="utf-8"))
+    with_retry(lambda: atomic_write_text(data, path))
 
 
 def write_html(report_ctx: Dict[str, Any], path: Path) -> None:
     from jinja2 import Template
 
     rendered = Template(HTML_REPORT_TEMPLATE).render(**report_ctx)
-    with_retry(lambda: path.write_text(rendered, encoding="utf-8"))
+    with_retry(lambda: atomic_write_text(rendered, path))
 
 
 def find_latest_run_id(root: Path) -> str:
@@ -376,13 +410,21 @@ def load_csv(folder: Path, filename: str) -> Optional[pd.DataFrame]:
 
 def atomic_to_csv(df: pd.DataFrame, path: Path, **to_csv_kwargs: Any) -> None:
     tmp_path = path.with_name(f".{path.name}.tmp")
-    df.to_csv(tmp_path, **to_csv_kwargs)
-    with open(tmp_path, "rb") as f:
+    try:
+        df.to_csv(tmp_path, **to_csv_kwargs)
         try:
-            os.fsync(f.fileno())
+            with open(tmp_path, "rb") as f:
+                os.fsync(f.fileno())
         except OSError:
             pass
-    os.replace(tmp_path, path)
+        os.replace(tmp_path, path)
+        _fsync_dir_best_effort(path.parent)
+    finally:
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        except Exception:
+            pass
 
 
 def write_csv(df: pd.DataFrame, path: Path) -> None:
