@@ -373,6 +373,13 @@ def write_csv(df: pd.DataFrame, path: Path) -> None:
     with_retry(lambda: df.to_csv(path, index=False))
 
 
+def format_output_path(path: Path, base: Path) -> str:
+    try:
+        return str(path.relative_to(base))
+    except ValueError:
+        return str(path)
+
+
 def validate_required_columns(
     df: pd.DataFrame,
     required: Sequence[str],
@@ -966,7 +973,7 @@ def main() -> int:
                 outputs.append(
                     {
                         "name": "gold_dim_customer",
-                        "path": str(out.relative_to(REPO_ROOT)),
+                        "path": format_output_path(out, REPO_ROOT),
                         "rows": int(len(dim_customer)),
                         "schema": list(dim_customer.columns),
                         "sha256": sha256_file(out),
@@ -998,7 +1005,7 @@ def main() -> int:
                 outputs.append(
                     {
                         "name": "gold_dim_product",
-                        "path": str(out.relative_to(REPO_ROOT)),
+                        "path": format_output_path(out, REPO_ROOT),
                         "rows": int(len(dim_product)),
                         "schema": list(dim_product.columns),
                         "sha256": sha256_file(out),
@@ -1030,7 +1037,7 @@ def main() -> int:
                 outputs.append(
                     {
                         "name": "gold_dim_location",
-                        "path": str(out.relative_to(REPO_ROOT)),
+                        "path": format_output_path(out, REPO_ROOT),
                         "rows": int(len(dim_location)),
                         "schema": list(dim_location.columns),
                         "sha256": sha256_file(out),
@@ -1066,7 +1073,7 @@ def main() -> int:
                 outputs.append(
                     {
                         "name": "gold_fact_sales",
-                        "path": str(out.relative_to(REPO_ROOT)),
+                        "path": format_output_path(out, REPO_ROOT),
                         "rows": int(len(fact_sales)),
                         "schema": list(fact_sales.columns),
                         "sha256": sha256_file(out),
@@ -1094,7 +1101,7 @@ def main() -> int:
                 outputs.append(
                     {
                         "name": "gold_agg_exec_kpis",
-                        "path": str(out.relative_to(REPO_ROOT)),
+                        "path": format_output_path(out, REPO_ROOT),
                         "rows": int(len(agg_exec_kpis)),
                         "schema": list(agg_exec_kpis.columns),
                         "sha256": sha256_file(out),
@@ -1120,7 +1127,7 @@ def main() -> int:
                 outputs.append(
                     {
                         "name": "gold_agg_product_performance",
-                        "path": str(out.relative_to(REPO_ROOT)),
+                        "path": format_output_path(out, REPO_ROOT),
                         "rows": int(len(agg_prod_perf)),
                         "schema": list(agg_prod_perf.columns),
                         "sha256": sha256_file(out),
@@ -1151,7 +1158,7 @@ def main() -> int:
                 outputs.append(
                     {
                         "name": "gold_agg_geo_performance",
-                        "path": str(out.relative_to(REPO_ROOT)),
+                        "path": format_output_path(out, REPO_ROOT),
                         "rows": int(len(agg_geo_perf)),
                         "schema": list(agg_geo_perf.columns),
                         "sha256": sha256_file(out),
@@ -1182,7 +1189,7 @@ def main() -> int:
                 outputs.append(
                     {
                         "name": "gold_wide_sales_enriched",
-                        "path": str(out.relative_to(REPO_ROOT)),
+                        "path": format_output_path(out, REPO_ROOT),
                         "rows": int(len(wide_sales)),
                         "schema": list(wide_sales.columns),
                         "sha256": sha256_file(out),
