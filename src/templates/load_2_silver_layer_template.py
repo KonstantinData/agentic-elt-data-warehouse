@@ -54,6 +54,8 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 import yaml
 
+from src.utils.atomic_io import atomic_to_csv, atomic_write_text
+
 # ------------------------------------------------------------------
 # Ensure "src" root is on sys.path so we can import agents package
 # ------------------------------------------------------------------
@@ -123,20 +125,6 @@ def safe_stat_utc(path: str) -> Dict[str, Any]:
         "file_size_bytes": st.st_size,
         "file_mtime_utc": iso_utc(mtime_utc),
     }
-
-
-def write_yaml(data: Dict[str, Any], path: str) -> None:
-    with open(path, "w", encoding="utf-8") as f:
-        yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
-
-
-def write_html_report(context: Dict[str, Any], path: str) -> None:
-    from jinja2 import Template
-
-    template = Template(HTML_REPORT_TEMPLATE)
-    html = template.render(**context)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(html)
 
 
 def find_latest_bronze_run_id() -> str:
@@ -594,7 +582,7 @@ def main() -> int:
 
             # Write
             t1 = time.perf_counter()
-            cleaned.to_csv(out_path, index=False)
+            atomic_to_csv(cleaned, out_path, index=False)
             rec["write_duration_s"] = time.perf_counter() - t1
 
             rec["out_sha256"] = sha256_file(out_path)
@@ -651,7 +639,10 @@ def main() -> int:
     }
 
     # Persist metadata.yaml under data/
-    write_yaml(metadata, os.path.join(data_dir, "metadata.yaml"))
+    atomic_write_text(
+        yaml.safe_dump(metadata, sort_keys=False, allow_unicode=True),
+        os.path.join(data_dir, "metadata.yaml"),
+    )
 
     # Write HTML report under reports/
     report_html_path = os.path.join(report_dir, "elt_report.html")
@@ -662,7 +653,9 @@ def main() -> int:
         "end_dt": iso_utc(end_dt),
         "results": results,
     }
-    write_html_report(report_ctx, report_html_path)
+    from jinja2 import Template
+
+    atomic_write_text(Template(HTML_REPORT_TEMPLATE).render(**report_ctx), report_html_path)
 
     # Call LLM-based report agent (if import was successful)
     if run_report_agent is not None:

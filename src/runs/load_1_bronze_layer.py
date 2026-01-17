@@ -39,6 +39,8 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 import pandas as pd
 import yaml
 
+from src.utils.atomic_io import atomic_write_text
+
 # -----------------------------
 # Config
 # -----------------------------
@@ -193,8 +195,10 @@ def safe_stat_utc(path: str, stat_fn: Callable[[str], os.stat_result] = os.stat)
 def write_yaml(data: Dict[str, Any], path: str) -> None:
     """Serialize a dictionary to a YAML file."""
 
-    with open(path, "w", encoding="utf-8") as f:
-        yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
+    atomic_write_text(
+        yaml.safe_dump(data, sort_keys=False, allow_unicode=True),
+        path,
+    )
 
 
 def write_html_report(context: Dict[str, Any], path: str) -> None:
@@ -204,8 +208,7 @@ def write_html_report(context: Dict[str, Any], path: str) -> None:
 
     template = Template(HTML_REPORT_TEMPLATE)
     html = template.render(**context)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(html)
+    atomic_write_text(html, path)
 
 
 def read_state(path: str) -> Dict[str, Any]:

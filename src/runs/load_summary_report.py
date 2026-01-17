@@ -17,6 +17,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 import yaml
 
+from src.utils.atomic_io import atomic_write_text
 LOGGER = logging.getLogger(__name__)
 
 ARTIFACTS_DIR = "artifacts"
@@ -75,7 +76,7 @@ def read_yaml(path: Path) -> Dict[str, Any]:
 def write_json(payload: Dict[str, Any], path: Path) -> None:
     """Write JSON to disk with exception handling."""
     try:
-        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        atomic_write_text(json.dumps(payload, indent=2), path)
     except OSError as exc:
         LOGGER.error("Failed to write JSON report", extra={"path": str(path), "error": str(exc)})
         raise
@@ -442,7 +443,7 @@ def write_summary_report(
 
     md_path = output_dir / SUMMARY_MD
     try:
-        md_path.write_text("\n".join(md_lines), encoding="utf-8")
+        atomic_write_text("\n".join(md_lines), md_path)
     except OSError as exc:
         LOGGER.error("Failed to write Markdown report", extra={"path": str(md_path), "error": str(exc)})
         raise

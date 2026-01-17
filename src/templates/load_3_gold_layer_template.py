@@ -27,6 +27,8 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 import yaml
 
+from src.utils.atomic_io import atomic_to_csv, atomic_write_text
+
 """
 load_3_gold_layer.py
 
@@ -213,16 +215,6 @@ def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
                 break
             h.update(b)
     return h.hexdigest()
-
-
-def write_yaml(obj: Dict[str, Any], path: Path) -> None:
-    path.write_text(yaml.safe_dump(obj, sort_keys=False, allow_unicode=True), encoding="utf-8")
-
-
-def write_html(report_ctx: Dict[str, Any], path: Path) -> None:
-    from jinja2 import Template
-
-    path.write_text(Template(HTML_REPORT_TEMPLATE).render(**report_ctx), encoding="utf-8")
 
 
 def find_latest_run_id(root: Path) -> str:
@@ -803,10 +795,8 @@ def main() -> int:
     def log(msg: str) -> None:
         line = f"{iso_utc(utc_now())} | {msg}"
         print(line)
-        if run_log_path.exists():
-            run_log_path.write_text(run_log_path.read_text(encoding="utf-8") + line + "\n", encoding="utf-8")
-        else:
-            run_log_path.write_text(line + "\n", encoding="utf-8")
+        existing = run_log_path.read_text(encoding="utf-8") if run_log_path.exists() else ""
+        atomic_write_text(f"{existing}{line}\n", run_log_path)
 
     outputs: List[Dict[str, Any]] = []
     errors: List[str] = []
@@ -838,7 +828,7 @@ def main() -> int:
                     raise FileNotFoundError("cst_info.csv is required for gold_dim_customer")
                 dim_customer = build_gold_dim_customer(cst_info, cst_az12, loc)
                 out = data_dir / "gold_dim_customer.csv"
-                dim_customer.to_csv(out, index=False)
+                atomic_to_csv(dim_customer, out, index=False)
                 outputs.append(
                     {
                         "name": "gold_dim_customer",
@@ -863,7 +853,7 @@ def main() -> int:
                     raise FileNotFoundError("prd_info.csv is required for gold_dim_product")
                 dim_product = build_gold_dim_product(prd_info, px_cat)
                 out = data_dir / "gold_dim_product.csv"
-                dim_product.to_csv(out, index=False)
+                atomic_to_csv(dim_product, out, index=False)
                 outputs.append(
                     {
                         "name": "gold_dim_product",
@@ -888,7 +878,7 @@ def main() -> int:
                     raise FileNotFoundError("LOC_A101.csv is required for gold_dim_location")
                 dim_location = build_gold_dim_location(loc)
                 out = data_dir / "gold_dim_location.csv"
-                dim_location.to_csv(out, index=False)
+                atomic_to_csv(dim_location, out, index=False)
                 outputs.append(
                     {
                         "name": "gold_dim_location",
@@ -913,7 +903,7 @@ def main() -> int:
                     raise FileNotFoundError("sales_details.csv is required for gold_fact_sales")
                 fact_sales = build_gold_fact_sales(sales)
                 out = data_dir / "gold_fact_sales.csv"
-                fact_sales.to_csv(out, index=False)
+                atomic_to_csv(fact_sales, out, index=False)
                 outputs.append(
                     {
                         "name": "gold_fact_sales",
@@ -938,7 +928,7 @@ def main() -> int:
                     raise FileNotFoundError("gold_fact_sales and gold_dim_customer are required for gold_agg_exec_kpis")
                 agg_exec_kpis = build_gold_agg_exec_kpis(fact_sales, dim_customer)
                 out = data_dir / "gold_agg_exec_kpis.csv"
-                agg_exec_kpis.to_csv(out, index=False)
+                atomic_to_csv(agg_exec_kpis, out, index=False)
                 outputs.append(
                     {
                         "name": "gold_agg_exec_kpis",
@@ -961,7 +951,7 @@ def main() -> int:
                     raise FileNotFoundError("gold_fact_sales and gold_dim_product are required for gold_agg_product_performance")
                 agg_prod_perf = build_gold_agg_product_performance(fact_sales, dim_product)
                 out = data_dir / "gold_agg_product_performance.csv"
-                agg_prod_perf.to_csv(out, index=False)
+                atomic_to_csv(agg_prod_perf, out, index=False)
                 outputs.append(
                     {
                         "name": "gold_agg_product_performance",
@@ -984,7 +974,7 @@ def main() -> int:
                     raise FileNotFoundError("gold_fact_sales, gold_dim_location, and gold_dim_product are required for gold_agg_geo_performance")
                 agg_geo_perf = build_gold_agg_geo_performance(fact_sales, dim_location, dim_product)
                 out = data_dir / "gold_agg_geo_performance.csv"
-                agg_geo_perf.to_csv(out, index=False)
+                atomic_to_csv(agg_geo_perf, out, index=False)
                 outputs.append(
                     {
                         "name": "gold_agg_geo_performance",
@@ -1007,7 +997,7 @@ def main() -> int:
                     raise FileNotFoundError("gold_fact_sales, gold_dim_customer, gold_dim_product, and gold_dim_location are required for gold_wide_sales_enriched")
                 wide_sales = build_gold_wide_sales_enriched(fact_sales, dim_customer, dim_product, dim_location)
                 out = data_dir / "gold_wide_sales_enriched.csv"
-                wide_sales.to_csv(out, index=False)
+                atomic_to_csv(wide_sales, out, index=False)
                 outputs.append(
                     {
                         "name": "gold_wide_sales_enriched",
@@ -1058,19 +1048,26 @@ def main() -> int:
         "notes": notes,
     }
 
-    write_yaml(meta, gold_dir / "metadata.yaml")
+    atomic_write_text(
+        yaml.safe_dump(meta, sort_keys=False, allow_unicode=True),
+        gold_dir / "metadata.yaml",
+    )
 
-    write_html(
-        {
-            "run_id": gold_run_id,
-            "start_dt": iso_utc(start_dt),
-            "end_dt": iso_utc(end_dt),
-            "silver_run_id": silver_run_id,
-            "outputs": [o["path"] for o in outputs],
-            "status": status,
-            "errors": errors,
-            "notes": " ".join(notes),
-        },
+    from jinja2 import Template
+
+    atomic_write_text(
+        Template(HTML_REPORT_TEMPLATE).render(
+            **{
+                "run_id": gold_run_id,
+                "start_dt": iso_utc(start_dt),
+                "end_dt": iso_utc(end_dt),
+                "silver_run_id": silver_run_id,
+                "outputs": [o["path"] for o in outputs],
+                "status": status,
+                "errors": errors,
+                "notes": " ".join(notes),
+            }
+        ),
         reports_dir / "gold_report.html",
     )
 
