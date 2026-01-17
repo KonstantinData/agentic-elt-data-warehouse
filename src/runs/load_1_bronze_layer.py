@@ -226,11 +226,15 @@ def write_state(path: str, payload: Dict[str, Any]) -> None:
 def parse_args() -> argparse.Namespace:
     """Parse CLI arguments for the bronze-layer load script."""
 
+    default_run_id = os.environ.get("BRONZE_RUN_ID")
+    if not default_run_id and os.environ.get("ORCHESTRATOR_RUN_ID"):
+        default_run_id = os.environ.get("RUN_ID")
+
     parser = argparse.ArgumentParser(description="Load CRM/ERP raw CSVs into bronze layer.")
     parser.add_argument(
         "--run-id",
-        default=os.environ.get("BRONZE_RUN_ID") or os.environ.get("RUN_ID"),
-        help="Optional run identifier (defaults to BRONZE_RUN_ID or RUN_ID env vars).",
+        default=default_run_id,
+        help="Optional run identifier (defaults to BRONZE_RUN_ID or RUN_ID when ORCHESTRATOR_RUN_ID is set).",
     )
     parser.add_argument("--raw-crm", default=DEFAULT_RAW_CRM, help="Path to CRM raw source directory.")
     parser.add_argument("--raw-erp", default=DEFAULT_RAW_ERP, help="Path to ERP raw source directory.")

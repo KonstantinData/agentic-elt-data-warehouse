@@ -111,12 +111,17 @@ def run_gold(run_silver: str, artifact_roots: Dict[str, Path], repo_root: Path) 
         else:
             raise RuntimeError(f"Gold root override already exists and is not a symlink: {gold_root_override}")
     gold_root_override.parent.mkdir(parents=True, exist_ok=True)
-    gold_root_override.symlink_to(gold_root)
+    use_symlink = True
+    try:
+        gold_root_override.symlink_to(gold_root)
+    except (OSError, NotImplementedError):
+        use_symlink = False
+    gold_override_path = gold_root_override if use_symlink else gold_root
     env = os.environ.copy()
     env.update({
         "SILVER_ROOT": str(silver_root),
         "SILVER_ROOT_OVERRIDE": str(silver_root),
-        "GOLD_ROOT_OVERRIDE": str(gold_root_override),
+        "GOLD_ROOT_OVERRIDE": str(gold_override_path),
     })
     cmd = [
         sys.executable,
@@ -126,6 +131,6 @@ def run_gold(run_silver: str, artifact_roots: Dict[str, Path], repo_root: Path) 
     try:
         _run_command(cmd, cwd=repo_root, env=env)
     finally:
-        if gold_root_override.is_symlink():
+        if use_symlink and gold_root_override.is_symlink():
             gold_root_override.unlink()
     return _latest_run_id(gold_root)
