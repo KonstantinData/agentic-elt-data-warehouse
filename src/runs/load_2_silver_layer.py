@@ -131,10 +131,44 @@ def safe_stat_utc(path: str) -> Dict[str, Any]:
         "file_mtime_utc": iso_utc(mtime_utc),
     }
 
+def _fsync_dir_best_effort(dir_path: Path) -> None:
+    try:
+        if os.name != "posix":
+            return
+        flags = getattr(os, "O_DIRECTORY", 0)
+        fd = os.open(str(dir_path), os.O_RDONLY | flags)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    except Exception:
+        pass
+
+
+def atomic_write_text(text: str, path: str | Path) -> None:
+    target = Path(path)
+    tmp_path = target.with_name(f".{target.name}.tmp")
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            f.write(text)
+            try:
+                f.flush()
+                os.fsync(f.fileno())
+            except OSError:
+                pass
+        os.replace(tmp_path, target)
+        _fsync_dir_best_effort(target.parent)
+    finally:
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        except Exception:
+            pass
+
 
 def write_yaml(data: Dict[str, Any], path: str) -> None:
-    with open(path, "w", encoding="utf-8") as f:
-        yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
+    payload = yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
+    atomic_write_text(payload, path)
 
 
 def write_html_report(context: Dict[str, Any], path: str) -> None:
@@ -142,20 +176,27 @@ def write_html_report(context: Dict[str, Any], path: str) -> None:
 
     template = Template(HTML_REPORT_TEMPLATE)
     html = template.render(**context)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(html)
+    atomic_write_text(html, path)
 
 
 def atomic_to_csv(df: pd.DataFrame, path: str, **to_csv_kwargs: Any) -> None:
     target = Path(path)
     tmp_path = target.with_name(f".{target.name}.tmp")
-    df.to_csv(tmp_path, **to_csv_kwargs)
-    with open(tmp_path, "rb") as f:
+    try:
+        df.to_csv(tmp_path, **to_csv_kwargs)
         try:
-            os.fsync(f.fileno())
+            with open(tmp_path, "rb") as f:
+                os.fsync(f.fileno())
         except OSError:
             pass
-    os.replace(tmp_path, target)
+        os.replace(tmp_path, target)
+        _fsync_dir_best_effort(target.parent)
+    finally:
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        except Exception:
+            pass
 
 
 def find_latest_bronze_run_id() -> str:
