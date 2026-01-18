@@ -259,11 +259,24 @@ For governance details and standards, consult the ADRs: `docs/adr/0000-adr-index
 - **Integration tests:** end-to-end runs against fixture CSVs.
 - **Pipeline tests:** schema validation and artifact integrity checks.
 
+**Example checks:**
+
+- Schema checks (columns and data types).
+- Row counts / row diff checks between expected and actual outputs.
+- Output existence (e.g., files or tables created).
+- Key uniqueness checks (primary key duplicates).
+
 Run tests locally:
 
 ```bash
 pytest
 ```
+
+**Definition of Done**
+
+- New logic is covered by tests.
+- Artifacts and metadata ere updated as ecpected
+- ADRs are updated if architectual behaviour changes.
 
 **Definition of Done:**
 
