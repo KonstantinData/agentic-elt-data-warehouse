@@ -1,0 +1,375 @@
+{
+  "run_id": "20260124_205326_#c4dcbc44",
+  "started_utc": "2026-01-24T20:53:26.067810Z",
+  "ended_utc": "2026-01-24T20:53:28.013599Z",
+  "duration_s": 1.945789,
+  "no_new_data": false,
+  "steps": {
+    "statuses": {
+      "bronze": "success",
+      "silver draft": "failed",
+      "silver builder": "failed",
+      "silver runner": "success",
+      "gold draft": "failed",
+      "gold builder": "failed",
+      "gold runner": "failed"
+    },
+    "timings_s": {
+      "bronze": 0.542694500007201,
+      "silver draft": 0.27102069999091327,
+      "silver builder": 0.06364840001333505,
+      "silver runner": 0.4631684999912977,
+      "gold draft": 0.08392219999223016,
+      "gold builder": 0.08549490000586957,
+      "gold runner": 0.4145104000053834
+    },
+    "details": [
+      {
+        "name": "bronze",
+        "status": "success",
+        "started_utc": "2026-01-24T20:53:26.067810Z",
+        "ended_utc": "2026-01-24T20:53:26.615185Z",
+        "duration_s": 0.542694500007201,
+        "return_code": 0,
+        "details": null,
+        "log_path": "D:\\Git-GitHub\\Repositories\\07-Portfolio\\agentic-elt-data-warehouse\\artifacts\\orchestrator\\20260124_205326_#c4dcbc44\\logs\\bronze.log"
+      },
+      {
+        "name": "silver draft",
+        "status": "failed",
+        "started_utc": "2026-01-24T20:53:26.636605Z",
+        "ended_utc": "2026-01-24T20:53:26.903897Z",
+        "duration_s": 0.27102069999091327,
+        "return_code": null,
+        "details": "Execution failed: No module named 'openai'",
+        "log_path": "D:\\Git-GitHub\\Repositories\\07-Portfolio\\agentic-elt-data-warehouse\\artifacts\\orchestrator\\20260124_205326_#c4dcbc44\\logs\\silver_draft.log"
+      },
+      {
+        "name": "silver builder",
+        "status": "failed",
+        "started_utc": "2026-01-24T20:53:26.903897Z",
+        "ended_utc": "2026-01-24T20:53:26.967231Z",
+        "duration_s": 0.06364840001333505,
+        "return_code": 1,
+        "details": "Command exited with code 1 (see D:\\Git-GitHub\\Repositories\\07-Portfolio\\agentic-elt-data-warehouse\\artifacts\\orchestrator\\20260124_205326_#c4dcbc44\\logs\\silver_builder.log)",
+        "log_path": "D:\\Git-GitHub\\Repositories\\07-Portfolio\\agentic-elt-data-warehouse\\artifacts\\orchestrator\\20260124_205326_#c4dcbc44\\logs\\silver_builder.log"
+      },
+      {
+        "name": "silver runner",
+        "status": "success",
+        "started_utc": "2026-01-24T20:53:26.967231Z",
+        "ended_utc": "2026-01-24T20:53:27.434667Z",
+        "duration_s": 0.4631684999912977,
+        "return_code": 0,
+        "details": null,
+        "log_path": "D:\\Git-GitHub\\Repositories\\07-Portfolio\\agentic-elt-data-warehouse\\artifacts\\orchestrator\\20260124_205326_#c4dcbc44\\logs\\silver_runner.log"
+      },
+      {
+        "name": "gold draft",
+        "status": "failed",
+        "started_utc": "2026-01-24T20:53:27.435653Z",
+        "ended_utc": "2026-01-24T20:53:27.514027Z",
+        "duration_s": 0.08392219999223016,
+        "return_code": 1,
+        "details": "Command exited with code 1 (see D:\\Git-GitHub\\Repositories\\07-Portfolio\\agentic-elt-data-warehouse\\artifacts\\orchestrator\\20260124_205326_#c4dcbc44\\logs\\gold_draft.log)",
+        "log_path": "D:\\Git-GitHub\\Repositories\\07-Portfolio\\agentic-elt-data-warehouse\\artifacts\\orchestrator\\20260124_205326_#c4dcbc44\\logs\\gold_draft.log"
+      },
+      {
+        "name": "gold builder",
+        "status": "failed",
+        "started_utc": "2026-01-24T20:53:27.514027Z",
+        "ended_utc": "2026-01-24T20:53:27.599849Z",
+        "duration_s": 0.08549490000586957,
+        "return_code": 1,
+        "details": "Command exited with code 1 (see D:\\Git-GitHub\\Repositories\\07-Portfolio\\agentic-elt-data-warehouse\\artifacts\\orchestrator\\20260124_205326_#c4dcbc44\\logs\\gold_builder.log)",
+        "log_path": "D:\\Git-GitHub\\Repositories\\07-Portfolio\\agentic-elt-data-warehouse\\artifacts\\orchestrator\\20260124_205326_#c4dcbc44\\logs\\gold_builder.log"
+      },
+      {
+        "name": "gold runner",
+        "status": "failed",
+        "started_utc": "2026-01-24T20:53:27.599849Z",
+        "ended_utc": "2026-01-24T20:53:28.013599Z",
+        "duration_s": 0.4145104000053834,
+        "return_code": 2,
+        "details": "Command exited with code 2 (see D:\\Git-GitHub\\Repositories\\07-Portfolio\\agentic-elt-data-warehouse\\artifacts\\orchestrator\\20260124_205326_#c4dcbc44\\logs\\gold_runner.log)",
+        "log_path": "D:\\Git-GitHub\\Repositories\\07-Portfolio\\agentic-elt-data-warehouse\\artifacts\\orchestrator\\20260124_205326_#c4dcbc44\\logs\\gold_runner.log"
+      }
+    ]
+  },
+  "layers": {
+    "bronze": {
+      "run_id": "20260124_205326_#c4dcbc44",
+      "status": "success",
+      "timings": {
+        "started_utc": "2026-01-24T20:53:26.467485Z",
+        "ended_utc": "2026-01-24T20:53:26.528111Z",
+        "duration_s": 0.060626
+      },
+      "paths": {
+        "root": "artifacts\\bronze\\20260124_205326_#c4dcbc44",
+        "data_dir": "artifacts\\bronze\\20260124_205326_#c4dcbc44\\data",
+        "metadata": "artifacts\\bronze\\20260124_205326_#c4dcbc44\\data\\metadata.yaml",
+        "report_html": "artifacts\\bronze\\20260124_205326_#c4dcbc44\\reports\\elt_report.html"
+      },
+      "row_counts": {
+        "files_total": 9,
+        "files_success": 3,
+        "files_skipped": 6,
+        "files_failed": 0,
+        "rows_total": 17,
+        "rows_success": 17
+      },
+      "schema_errors": [],
+      "dq_summary": null,
+      "metadata": {
+        "run": {
+          "run_id": "20260124_205326_#c4dcbc44",
+          "layer": "bronze",
+          "pipeline": "elt_bronze",
+          "started_utc": "2026-01-24T20:53:26.467485Z",
+          "ended_utc": "2026-01-24T20:53:26.528111Z",
+          "duration_s": 0.060626
+        },
+        "env": {
+          "python": "3.12.6 (tags/v3.12.6:a4a2d2b, Sep  6 2024, 20:11:23) [MSC v.1940 64 bit (AMD64)]",
+          "pandas": "3.0.0",
+          "platform": "Windows-11-10.0.26200-SP0"
+        },
+        "sources": {
+          "crm_root": "raw\\source_crm",
+          "erp_root": "raw\\source_erp",
+          "crm_file_glob": "*.csv",
+          "crm_file_exclude": null,
+          "erp_file_glob": "*.csv",
+          "erp_file_exclude": null,
+          "crm_files": [
+            "cst_info.csv",
+            "customer_info.csv",
+            "prd_info.csv",
+            "sales_details.csv"
+          ],
+          "erp_files": [
+            "CST_AZ12.csv",
+            "LOC_A101.csv",
+            "PX_CAT_G1V2.csv",
+            "product_info.csv",
+            "sales_transactions.csv"
+          ]
+        },
+        "tables": {
+          "cst_info.csv": {
+            "source_system": "CRM",
+            "source_path": "raw\\source_crm\\cst_info.csv",
+            "status": "SKIPPED",
+            "skip_reason": "unchanged",
+            "rows": 0,
+            "schema": [],
+            "dtypes": {},
+            "read_duration_s": null,
+            "copy_duration_s": null,
+            "file_size_bytes": 855395,
+            "file_mtime_utc": "2025-02-19T15:22:34.040548Z",
+            "sha256": "5e00eca4351886386f6dd01beea91cb17ff081b97b9a02d295b84505448c8040",
+            "error_type": null,
+            "error_message": null,
+            "is_changed": false
+          },
+          "customer_info.csv": {
+            "source_system": "CRM",
+            "source_path": "raw\\source_crm\\customer_info.csv",
+            "status": "SUCCESS",
+            "skip_reason": null,
+            "rows": 5,
+            "schema": [
+              "customer_id",
+              "firstname",
+              "lastname",
+              "gender",
+              "date_of_birth"
+            ],
+            "dtypes": {
+              "customer_id": "int64",
+              "firstname": "str",
+              "lastname": "str",
+              "gender": "str",
+              "date_of_birth": "str"
+            },
+            "read_duration_s": 0.0013901999918743968,
+            "copy_duration_s": 0.0011258000158704817,
+            "file_size_bytes": 190,
+            "file_mtime_utc": "2026-01-24T20:24:44.535424Z",
+            "sha256": "f6578fd33c8172217948ad9c0cec51d9fa479edb9291e55fe81ca7ac20ce64a1",
+            "error_type": null,
+            "error_message": null,
+            "is_changed": true
+          },
+          "prd_info.csv": {
+            "source_system": "CRM",
+            "source_path": "raw\\source_crm\\prd_info.csv",
+            "status": "SKIPPED",
+            "skip_reason": "unchanged",
+            "rows": 0,
+            "schema": [],
+            "dtypes": {},
+            "read_duration_s": null,
+            "copy_duration_s": null,
+            "file_size_bytes": 26934,
+            "file_mtime_utc": "2025-02-19T15:22:34.041549Z",
+            "sha256": "3db1d644b424aa42599c5a00a8b1297b7b099367c180a63b141f91efac0de45b",
+            "error_type": null,
+            "error_message": null,
+            "is_changed": false
+          },
+          "sales_details.csv": {
+            "source_system": "CRM",
+            "source_path": "raw\\source_crm\\sales_details.csv",
+            "status": "SKIPPED",
+            "skip_reason": "unchanged",
+            "rows": 0,
+            "schema": [],
+            "dtypes": {},
+            "read_duration_s": null,
+            "copy_duration_s": null,
+            "file_size_bytes": 3588116,
+            "file_mtime_utc": "2025-02-19T15:22:34.048555Z",
+            "sha256": "0a1e565ae2e8accec217819226d7b71104cc6075590172ed855617a8930a4369",
+            "error_type": null,
+            "error_message": null,
+            "is_changed": false
+          },
+          "CST_AZ12.csv": {
+            "source_system": "ERP",
+            "source_path": "raw\\source_erp\\CST_AZ12.csv",
+            "status": "SKIPPED",
+            "skip_reason": "unchanged",
+            "rows": 0,
+            "schema": [],
+            "dtypes": {},
+            "read_duration_s": null,
+            "copy_duration_s": null,
+            "file_size_bytes": 561549,
+            "file_mtime_utc": "2025-02-19T15:22:34.050548Z",
+            "sha256": "31b697a6a6022085e2f0b1a4d8fe55faae57a54a2d0c8ff91534253b8f3e64a0",
+            "error_type": null,
+            "error_message": null,
+            "is_changed": false
+          },
+          "LOC_A101.csv": {
+            "source_system": "ERP",
+            "source_path": "raw\\source_erp\\LOC_A101.csv",
+            "status": "SKIPPED",
+            "skip_reason": "unchanged",
+            "rows": 0,
+            "schema": [],
+            "dtypes": {},
+            "read_duration_s": null,
+            "copy_duration_s": null,
+            "file_size_bytes": 402669,
+            "file_mtime_utc": "2025-02-19T15:22:34.051548Z",
+            "sha256": "d46239d31bfa3a78e8a6cc8ee97a51e914b2db2db460bfb79a3aeadaf8e028c0",
+            "error_type": null,
+            "error_message": null,
+            "is_changed": false
+          },
+          "PX_CAT_G1V2.csv": {
+            "source_system": "ERP",
+            "source_path": "raw\\source_erp\\PX_CAT_G1V2.csv",
+            "status": "SKIPPED",
+            "skip_reason": "unchanged",
+            "rows": 0,
+            "schema": [],
+            "dtypes": {},
+            "read_duration_s": null,
+            "copy_duration_s": null,
+            "file_size_bytes": 1169,
+            "file_mtime_utc": "2025-02-19T15:22:34.051548Z",
+            "sha256": "ef8048319a2cc23907fc6caf215d31cca5e0bf908590fd6bd7dfa81b48ac9743",
+            "error_type": null,
+            "error_message": null,
+            "is_changed": false
+          },
+          "product_info.csv": {
+            "source_system": "ERP",
+            "source_path": "raw\\source_erp\\product_info.csv",
+            "status": "SUCCESS",
+            "skip_reason": null,
+            "rows": 4,
+            "schema": [
+              "product_id",
+              "product_name",
+              "category",
+              "price"
+            ],
+            "dtypes": {
+              "product_id": "int64",
+              "product_name": "str",
+              "category": "str",
+              "price": "float64"
+            },
+            "read_duration_s": 0.000534699996933341,
+            "copy_duration_s": 0.0006980000180192292,
+            "file_size_bytes": 142,
+            "file_mtime_utc": "2026-01-24T20:24:44.529251Z",
+            "sha256": "85bc80391491c6ddfd272295b846545020e9639c58ed0aa24c3e4da8102a369a",
+            "error_type": null,
+            "error_message": null,
+            "is_changed": true
+          },
+          "sales_transactions.csv": {
+            "source_system": "ERP",
+            "source_path": "raw\\source_erp\\sales_transactions.csv",
+            "status": "SUCCESS",
+            "skip_reason": null,
+            "rows": 8,
+            "schema": [
+              "transaction_id",
+              "customer_id",
+              "product_id",
+              "quantity",
+              "unit_price",
+              "transaction_date"
+            ],
+            "dtypes": {
+              "transaction_id": "int64",
+              "customer_id": "int64",
+              "product_id": "int64",
+              "quantity": "int64",
+              "unit_price": "float64",
+              "transaction_date": "str"
+            },
+            "read_duration_s": 0.00046729997848160565,
+            "copy_duration_s": 0.0006818999827373773,
+            "file_size_bytes": 306,
+            "file_mtime_utc": "2026-01-24T20:24:44.531418Z",
+            "sha256": "6ba0f347502634e668e1f4c22c09c4fe839a5fa0c28cf4f7d8edcfa57fcdd833",
+            "error_type": null,
+            "error_message": null,
+            "is_changed": true
+          }
+        },
+        "summary": {
+          "files_total": 9,
+          "files_success": 3,
+          "files_skipped": 6,
+          "files_failed": 0,
+          "has_new_data": true
+        }
+      }
+    },
+    "silver": {
+      "run_id": "20260124_205327_#c4dcbc44",
+      "status": "missing",
+      "paths": {
+        "root": "artifacts\\silver\\20260124_205327_#c4dcbc44",
+        "data_dir": "artifacts\\silver\\20260124_205327_#c4dcbc44\\data",
+        "metadata": "artifacts\\silver\\20260124_205327_#c4dcbc44\\metadata.yaml",
+        "report_html": "artifacts\\silver\\20260124_205327_#c4dcbc44\\reports\\elt_report.html"
+      }
+    },
+    "gold": {
+      "run_id": null,
+      "status": "missing"
+    }
+  },
+  "token_usage": null
+}

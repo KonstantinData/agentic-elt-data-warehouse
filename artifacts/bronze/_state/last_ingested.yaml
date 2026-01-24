@@ -1,10 +1,15 @@
-updated_utc: '2026-01-17T10:15:45.154994Z'
+updated_utc: '2026-01-24T20:53:26.528111Z'
 files:
   raw\source_crm\cst_info.csv:
     source_system: CRM
     file_mtime_utc: '2025-02-19T15:22:34.040548Z'
     sha256: 5e00eca4351886386f6dd01beea91cb17ff081b97b9a02d295b84505448c8040
     file_size_bytes: 855395
+  raw\source_crm\customer_info.csv:
+    source_system: CRM
+    file_mtime_utc: '2026-01-24T20:24:44.535424Z'
+    sha256: f6578fd33c8172217948ad9c0cec51d9fa479edb9291e55fe81ca7ac20ce64a1
+    file_size_bytes: 190
   raw\source_crm\prd_info.csv:
     source_system: CRM
     file_mtime_utc: '2025-02-19T15:22:34.041549Z'
@@ -30,3 +35,13 @@ files:
     file_mtime_utc: '2025-02-19T15:22:34.051548Z'
     sha256: ef8048319a2cc23907fc6caf215d31cca5e0bf908590fd6bd7dfa81b48ac9743
     file_size_bytes: 1169
+  raw\source_erp\product_info.csv:
+    source_system: ERP
+    file_mtime_utc: '2026-01-24T20:24:44.529251Z'
+    sha256: 85bc80391491c6ddfd272295b846545020e9639c58ed0aa24c3e4da8102a369a
+    file_size_bytes: 142
+  raw\source_erp\sales_transactions.csv:
+    source_system: ERP
+    file_mtime_utc: '2026-01-24T20:24:44.531418Z'
+    sha256: 6ba0f347502634e668e1f4c22c09c4fe839a5fa0c28cf4f7d8edcfa57fcdd833
+    file_size_bytes: 306
