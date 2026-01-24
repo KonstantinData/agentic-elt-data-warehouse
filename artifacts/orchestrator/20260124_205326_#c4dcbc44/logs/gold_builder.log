@@ -1,4 +1,0 @@
-Traceback (most recent call last):
-  File "D:\Git-GitHub\Repositories\07-Portfolio\agentic-elt-data-warehouse\src\agents\load_3_gold_layer_builder_agent.py", line 33, in <module>
-    from openai import OpenAI
-ModuleNotFoundError: No module named 'openai'

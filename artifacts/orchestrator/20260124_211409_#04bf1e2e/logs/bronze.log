@@ -1,0 +1,17 @@
+2026-01-24T21:14:09.948118Z | RUN_START run_id=20260124_211409_#04bf1e2e
+2026-01-24T21:14:09.948118Z | CONFIG RAW_CRM=raw\source_crm RAW_ERP=raw\source_erp BRONZE_ROOT=artifacts\bronze CRM_FILE_GLOB=*.csv CRM_FILE_EXCLUDE=None ERP_FILE_GLOB=*.csv ERP_FILE_EXCLUDE=None
+2026-01-24T21:14:09.948118Z | DISCOVERED CRM_FILES=['cst_info.csv', 'customer_info.csv', 'prd_info.csv', 'sales_details.csv']
+2026-01-24T21:14:09.948118Z | DISCOVERED ERP_FILES=['CST_AZ12.csv', 'LOC_A101.csv', 'PX_CAT_G1V2.csv', 'product_info.csv', 'sales_transactions.csv']
+2026-01-24T21:14:09.978725Z | BEGIN CRM SOURCE LOAD
+2026-01-24T21:14:09.996636Z | SUCCESS file=cst_info.csv source=CRM rows=18494 read=0.013s copy=0.003s
+2026-01-24T21:14:09.997636Z | SUCCESS file=customer_info.csv source=CRM rows=5 read=0.001s copy=0.001s
+2026-01-24T21:14:09.997636Z | SUCCESS file=prd_info.csv source=CRM rows=397 read=0.001s copy=0.000s
+2026-01-24T21:14:10.042341Z | SUCCESS file=sales_details.csv source=CRM rows=60398 read=0.037s copy=0.001s
+2026-01-24T21:14:10.042341Z | BEGIN ERP SOURCE LOAD
+2026-01-24T21:14:10.044264Z | SUCCESS file=CST_AZ12.csv source=ERP rows=18484 read=0.009s copy=0.001s
+2026-01-24T21:14:10.062596Z | SUCCESS file=LOC_A101.csv source=ERP rows=18484 read=0.007s copy=0.001s
+2026-01-24T21:14:10.064285Z | SUCCESS file=PX_CAT_G1V2.csv source=ERP rows=37 read=0.000s copy=0.000s
+2026-01-24T21:14:10.065868Z | SUCCESS file=product_info.csv source=ERP rows=4 read=0.000s copy=0.001s
+2026-01-24T21:14:10.067400Z | SUCCESS file=sales_transactions.csv source=ERP rows=8 read=0.000s copy=0.001s
+2026-01-24T21:14:10.096054Z | RUN_END run_id=20260124_211409_#04bf1e2e duration_s=0.123 success=9 failed=0
+{"run_id": "20260124_211409_#04bf1e2e", "artifacts_dir": "artifacts\\bronze\\20260124_211409_#04bf1e2e", "has_new_data": true, "files_total": 9, "files_success": 9, "files_skipped": 0, "files_failed": 0}

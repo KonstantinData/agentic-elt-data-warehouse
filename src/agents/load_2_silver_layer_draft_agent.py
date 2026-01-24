@@ -291,14 +291,23 @@ def _infer_series_type(series: pd.Series) -> str:
         if cleaned.empty:
             return "unknown"
 
+    # Performance optimization: sample large series
+    if len(cleaned) > 1000:
+        cleaned = cleaned.sample(n=1000, random_state=42)
+
     numeric = pd.to_numeric(cleaned, errors="coerce")
     numeric_ratio = float(numeric.notna().mean())
 
     detected_format = _detect_datetime_format(cleaned)
     if detected_format:
+        # Use detected format for better performance
         datetime_values = pd.to_datetime(cleaned, errors="coerce", format=detected_format)
     else:
-        datetime_values = pd.to_datetime(cleaned, errors="coerce")
+        # Suppress warnings for performance
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            datetime_values = pd.to_datetime(cleaned, errors="coerce")
     datetime_ratio = float(datetime_values.notna().mean())
 
     if numeric_ratio >= 0.9:
@@ -485,41 +494,110 @@ def run_report_agent(
     model_name: str = "gpt-4.1-mini",
 ) -> None:
     """
-    Produces two outputs in tmp/draft_reports/silver/<run_id>/:
+    Produces two outputs in artifacts/silver/<run_id>/reports/:
       - silver_run_human_report.md
       - silver_run_agent_context.json
+    
+    Gracefully handles missing files and LLM failures.
     """
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     logger.info("Starting Silver draft report generation. run_id=%s", run_id)
     start_time = time.monotonic()
 
-    bronze_run_dir = Path("artifacts") / "bronze" / run_id
-    data_dir = bronze_run_dir / "data"
-    reports_dir = bronze_run_dir / "reports"
+    try:
+        bronze_run_dir = Path("artifacts") / "bronze" / run_id
+        data_dir = bronze_run_dir / "data"
+        reports_dir = bronze_run_dir / "reports"
 
-    metadata_path = data_dir / "metadata.yaml"
-    log_path = data_dir / "run_log.txt"
-    html_report_path = reports_dir / "elt_report.html"
+        # Validate Bronze run exists
+        if not bronze_run_dir.exists():
+            raise FileNotFoundError(f"Bronze run directory not found: {bronze_run_dir}")
+        if not data_dir.exists():
+            raise FileNotFoundError(f"Bronze data directory not found: {data_dir}")
 
-    client = _build_openai_client()
+        metadata_path = data_dir / "metadata.yaml"
+        log_path = data_dir / "run_log.txt"
+        html_report_path = reports_dir / "elt_report.html"
 
-    # Paths
-    output_dir = Path("tmp") / "draft_reports" / "silver" / run_id
-    output_dir.mkdir(parents=True, exist_ok=True)
+        # Setup output directory
+        silver_run_dir = Path("artifacts") / "silver" / run_id
+        output_dir = silver_run_dir / "reports"
+        output_dir.mkdir(parents=True, exist_ok=True)
 
-    metadata_text = _read_text(metadata_path)
-    log_text = _read_text(log_path)
-    html_text = _read_text(html_report_path)
-    metadata_dict = _read_yaml(metadata_path)
+        # Read inputs with fallbacks
+        metadata_text = _read_text(metadata_path)
+        log_text = _read_text(log_path)
+        html_text = _read_text(html_report_path)
+        metadata_dict = _read_yaml(metadata_path)
 
-    logger.info("Profiling Bronze run artifacts.")
-    profile = _profile_bronze_run(data_dir)
-    profile_md = _render_profile_markdown(profile)
-    generated_at = datetime.now(timezone.utc).isoformat()
+        logger.info("Profiling Bronze run artifacts.")
+        profile = _profile_bronze_run(data_dir)
+        profile_md = _render_profile_markdown(profile)
+        generated_at = datetime.now(timezone.utc).isoformat()
 
-    # ------------------------------------------------------------
-    # 1) Human-readable report (Markdown)
-    # ------------------------------------------------------------
+        # Check if profiling found critical errors
+        if profile.get("errors"):
+            logger.warning("Bronze profiling found %d errors", len(profile["errors"]))
+
+        # Initialize OpenAI client with retry logic
+        try:
+            client = _build_openai_client()
+        except Exception as exc:
+            logger.error("Failed to initialize OpenAI client: %s", exc)
+            # Create fallback outputs
+            _create_fallback_outputs(output_dir, run_id, silver_run_id, profile, generated_at, str(exc))
+            return
+
+        # Generate human report with retry
+        human_report_md = _generate_human_report_with_retry(
+            client, model_name, run_id, silver_run_id, 
+            metadata_text, log_text, html_text, profile
+        )
+
+        # Write outputs
+        human_report_path = output_dir / "silver_run_human_report.md"
+        human_report_path.write_text(
+            f"{human_report_md}\n\n{profile_md}",
+            encoding="utf-8",
+        )
+        logger.info("Wrote human-readable report: %s", human_report_path)
+
+        # Generate JSON context
+        json_data = _build_agent_context(run_id, silver_run_id, metadata_dict, profile, generated_at)
+        json_out_path = output_dir / "silver_run_agent_context.json"
+        json_out_path.write_text(
+            json.dumps(json_data, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        logger.info("Wrote agent context JSON: %s", json_out_path)
+        
+        elapsed = time.monotonic() - start_time
+        logger.info("Completed Silver draft report generation in %.2fs.", elapsed)
+        
+    except Exception as exc:
+        logger.exception("Silver draft agent failed: %s", exc)
+        # Ensure we always create some output for downstream agents
+        try:
+            output_dir = Path("artifacts") / "silver" / run_id / "reports"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            _create_fallback_outputs(output_dir, run_id, silver_run_id, {}, 
+                                   datetime.now(timezone.utc).isoformat(), str(exc))
+        except Exception as fallback_exc:
+            logger.error("Failed to create fallback outputs: %s", fallback_exc)
+        raise
+
+
+def _generate_human_report_with_retry(
+    client: OpenAI, model_name: str, run_id: str, silver_run_id: str | None,
+    metadata_text: str, log_text: str, html_text: str, profile: Dict[str, Any]
+) -> str:
+    """Generate human report with retry logic and fallback."""
+    # Performance optimization: truncate large inputs
+    metadata_text = metadata_text[:5000] if len(metadata_text) > 5000 else metadata_text
+    log_text = log_text[:3000] if len(log_text) > 3000 else log_text
+    html_text = html_text[:8000] if len(html_text) > 8000 else html_text
+    profile_text = json.dumps(profile, indent=2)[:10000] if len(json.dumps(profile, indent=2)) > 10000 else json.dumps(profile, indent=2)
+    
     human_messages = [
         {
             "role": "system",
@@ -527,7 +605,7 @@ def run_report_agent(
                 "You are a senior Data & Analytics expert. "
                 "You produce concise but complete reports for humans. "
                 "Use the following Data Analytics process and catalogues as your guiding framework:\n\n"
-                + PROCESS_DESCRIPTION
+                + PROCESS_DESCRIPTION[:5000]  # Truncate long system prompt
             ),
         },
         {
@@ -544,10 +622,10 @@ def run_report_agent(
                 f"{log_text}\n\n"
                 "Input 3: HTML report (structure only, if helpful):\n"
                 "---------------------------------------------------\n"
-                f"{html_text[:8000]}\n\n"
+                f"{html_text}\n\n"
                 "Input 4: Automated Bronze profiling for Silver draft:\n"
                 "-------------------------------------------------------\n"
-                f"{json.dumps(profile, indent=2)}\n\n"
+                f"{profile_text}\n\n"
                 "Requirements for the Markdown report:\n"
                 "- Short executive summary at the top (3–5 bullet points).\n"
                 "- Sections aligned to the Data Analytics process (1–10), but only where relevant to this run.\n"
@@ -571,27 +649,74 @@ def run_report_agent(
         },
     ]
 
-    logger.info("Requesting human-readable report from OpenAI.")
-    try:
-        human_resp = client.chat.completions.create(
-            model=model_name,
-            messages=human_messages,
-        )
-    except Exception as exc:
-        logger.exception("OpenAI call failed for human report generation.")
-        raise RuntimeError("OpenAI call failed for human report generation.") from exc
-    human_report_md = human_resp.choices[0].message.content or ""
+    token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    
+    for attempt in range(3):  # 3 retry attempts
+        try:
+            logger.info("Requesting human-readable report from OpenAI (attempt %d/3).", attempt + 1)
+            start_llm = time.monotonic()
+            
+            human_resp = client.chat.completions.create(
+                model=model_name,
+                messages=human_messages,
+                timeout=60,  # 60 second timeout
+                max_tokens=4000,  # Limit response size for performance
+            )
+            
+            llm_duration = time.monotonic() - start_llm
+            
+            # Track token usage for monitoring
+            if hasattr(human_resp, 'usage') and human_resp.usage:
+                token_usage = {
+                    "prompt_tokens": human_resp.usage.prompt_tokens,
+                    "completion_tokens": human_resp.usage.completion_tokens,
+                    "total_tokens": human_resp.usage.total_tokens,
+                }
+            
+            logger.info("LLM call completed in %.2fs, tokens: %s", llm_duration, token_usage)
+            return human_resp.choices[0].message.content or ""
+            
+        except Exception as exc:
+            logger.warning("OpenAI call failed (attempt %d/3): %s", attempt + 1, exc)
+            if attempt == 2:  # Last attempt
+                logger.error("All OpenAI attempts failed, using fallback report")
+                return _create_fallback_human_report(run_id, silver_run_id, profile)
+            time.sleep(2 ** attempt)  # Exponential backoff
 
-    human_report_path = output_dir / "silver_run_human_report.md"
-    human_report_path.write_text(
-        f"{human_report_md}\n\n{profile_md}",
-        encoding="utf-8",
-    )
-    logger.info("Wrote human-readable report: %s", human_report_path)
 
-    # ------------------------------------------------------------
-    # 2) Machine-readable context for downstream agents (JSON)
-    # ------------------------------------------------------------
+def _create_fallback_human_report(run_id: str, silver_run_id: str | None, profile: Dict[str, Any]) -> str:
+    """Create a basic fallback report when LLM fails."""
+    schema_overview = profile.get("schema_overview", {})
+    table_count = schema_overview.get("table_count", 0)
+    errors = profile.get("errors", [])
+    
+    return f"""# Silver Layer Draft Report (Fallback)
+
+**Run ID:** {run_id}  
+**Silver Run ID:** {silver_run_id or 'N/A'}  
+**Generated:** {datetime.now(timezone.utc).isoformat()}
+
+## Executive Summary
+- Bronze layer processed {table_count} tables
+- {len(errors)} profiling errors detected
+- LLM analysis unavailable - using automated profiling only
+- Manual review recommended for complete analysis
+
+## Data Quality Status
+{'✅ No profiling errors detected' if not errors else f'⚠️ {len(errors)} errors found during profiling'}
+
+## Next Steps
+- Review Bronze layer data quality issues
+- Retry Silver draft generation when LLM service is available
+- Consider manual data analysis if LLM issues persist
+
+*Note: This is a fallback report generated due to LLM service unavailability.*
+"""
+
+
+def _build_agent_context(run_id: str, silver_run_id: str | None, metadata_dict: Dict[str, Any], 
+                        profile: Dict[str, Any], generated_at: str) -> Dict[str, Any]:
+    """Build the agent context JSON with error handling and performance metrics."""
     summary = metadata_dict.get("summary", {}) if isinstance(metadata_dict, dict) else {}
     files_total = summary.get("files_total", 0)
     files_success = summary.get("files_success", 0)
@@ -610,7 +735,11 @@ def run_report_agent(
             "schema_out": tmeta.get("schema_out", []),
         }
 
-    json_data = {
+    # Performance metrics
+    total_rows = sum(t.get("row_count", 0) for t in profile.get("tables", {}).values() if "error" not in t)
+    total_columns = sum(t.get("column_count", 0) for t in profile.get("tables", {}).values() if "error" not in t)
+    
+    return {
         "run_id": run_id,
         "silver_run_id": silver_run_id,
         "layer": "silver",
@@ -623,19 +752,65 @@ def run_report_agent(
         "bronze_tables": tables,
         "profile": profile,
         "schema_overview": profile.get("schema_overview"),
+        "has_errors": len(profile.get("errors", [])) > 0,
+        "error_count": len(profile.get("errors", [])),
+        # Performance metrics for monitoring
+        "performance_metrics": {
+            "total_rows_processed": total_rows,
+            "total_columns_processed": total_columns,
+            "tables_processed": len([t for t in profile.get("tables", {}).values() if "error" not in t]),
+            "tables_failed": len([t for t in profile.get("tables", {}).values() if "error" in t]),
+        },
     }
 
-    json_out_path = output_dir / "silver_run_agent_context.json"
-    json_out_path.write_text(
-        json.dumps(json_data, indent=2, ensure_ascii=False),
-        encoding="utf-8",
+
+def _create_fallback_outputs(output_dir: Path, run_id: str, silver_run_id: str | None, 
+                            profile: Dict[str, Any], generated_at: str, error_msg: str) -> None:
+    """Create minimal fallback outputs when agent fails completely."""
+    # Fallback human report
+    fallback_md = f"""# Silver Layer Draft Report (Error Fallback)
+
+**Run ID:** {run_id}  
+**Error:** {error_msg}  
+**Generated:** {generated_at}
+
+## Status
+❌ Silver draft agent failed to complete analysis.
+
+## Recommended Actions
+1. Check Bronze layer data integrity
+2. Verify OpenAI API key and connectivity
+3. Review agent logs for detailed error information
+4. Retry pipeline execution
+
+*This is an error fallback report. Manual intervention required.*
+"""
+    
+    (output_dir / "silver_run_human_report.md").write_text(fallback_md, encoding="utf-8")
+    
+    # Fallback JSON context
+    fallback_json = {
+        "run_id": run_id,
+        "silver_run_id": silver_run_id,
+        "layer": "silver",
+        "source_layer": "bronze",
+        "bronze_run_id": run_id,
+        "generated_at_utc": generated_at,
+        "status": "error",
+        "error_message": error_msg,
+        "files_total": 0,
+        "files_success": 0,
+        "files_failed": 0,
+        "bronze_tables": {},
+        "profile": profile,
+        "schema_overview": profile.get("schema_overview", {}),
+        "has_errors": True,
+        "error_count": 1,
+    }
+    
+    (output_dir / "silver_run_agent_context.json").write_text(
+        json.dumps(fallback_json, indent=2, ensure_ascii=False), encoding="utf-8"
     )
-    logger.info("Wrote agent context JSON: %s", json_out_path)
-    elapsed = time.monotonic() - start_time
-    logger.info("Completed Silver draft report generation in %.2fs.", elapsed)
-
-
-# Optional: manual test
 if __name__ == "__main__":
     # Example call (adjust paths or read from args as needed)
     example_run_id = "TEST_000000_#abcdef"

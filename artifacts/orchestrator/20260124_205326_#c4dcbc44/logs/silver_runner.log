@@ -1,9 +1,0 @@
-2026-01-24T20:53:27.294568Z | RUN_START run_id=20260124_205327_#c4dcbc44
-2026-01-24T20:53:27.294568Z | SOURCE bronze_run_id=20260124_205326_#c4dcbc44
-2026-01-24T20:53:27.294568Z | CONFIG BRONZE_ROOT=artifacts\bronze SILVER_ROOT=artifacts\silver
-2026-01-24T20:53:27.356548Z | SUCCESS file=customer_info.csv rows_in=5 rows_out=5 read=0.001s write=0.001s
-2026-01-24T20:53:27.356548Z | SUCCESS file=product_info.csv rows_in=4 rows_out=4 read=0.000s write=0.001s
-2026-01-24T20:53:27.356548Z | SUCCESS file=sales_transactions.csv rows_in=8 rows_out=8 read=0.000s write=0.000s
-2026-01-24T20:53:27.401388Z | WARNING: run_report_agent could not be imported; skipping LLM report generation.
-2026-01-24T20:53:27.401388Z | RUN_END run_id=20260124_205327_#c4dcbc44 duration_s=0.062 success=3 failed=0
-2026-01-24T20:53:27.402392Z | OUTPUT=artifacts\silver\20260124_205327_#c4dcbc44
