@@ -1,342 +1,85 @@
-# Agentic ELT Data Warehouse
+# Agentic ELT Data Warehouse (Enhanced)
 
-**Value proposition:** A local, run-based ELT system that transforms raw CRM/ERP CSV inputs into Medallion-layer artifacts for data engineers and reviewers who need reproducible, auditable pipeline outputs and lineage metadata.
+This repository contains a deterministic, audit‑friendly ELT/analytics pipeline for a mid‑sized German company.  The pipeline ingests raw CRM and ERP data, cleans and standardises it, builds star‑schema business marts, performs exploratory data analysis (EDA), engineers features, runs customer segmentation using k‑means clustering and produces a final exposé report.  All outputs are stored in a unified run directory under `artifacts/runs/<run_id>/` which acts as the single source of truth for a pipeline execution.
 
-**Non-goals / out of scope:**
+## Golden Path
 
-- Production orchestration, scheduling, or deployment infrastructure
-- Cloud storage integrations or external databases
-- Streaming ingestion or real-time processing
-- Enterprise-grade security controls beyond local environment hygiene
+The **Golden Path** is a single command that runs the entire pipeline end‑to‑end and produces the final exposé report.  It executes the following steps in sequence:
 
-**Production-Ready Architecture (Outlook)**
+1. **Bronze layer** – copies raw CSV files from `raw/source_crm` and `raw/source_erp` into the run folder under `bronze/data/` and records ingestion metadata.
+2. **Silver layer** – cleans and standardises the bronze tables (trimming whitespace, normalising dates and numerics, harmonising codes) and writes them to `silver/data/`.
+3. **Gold layer** – builds business marts (dimensions, facts and aggregated KPI tables) from the silver tables and writes them to `gold/data/`.
+4. **EDA** – generates summary statistics and an EDA report without exposing personally identifiable information (PII).
+5. **Feature engineering** – aggregates customer‑level features from the gold marts and writes a feature table used for clustering.
+6. **Segmentation & clustering** – applies deterministic k‑means clustering to segment customers and writes cluster assignments along with model metadata and a segmentation report.
+7. **Final exposé** – compiles an executive‑ready summary covering data quality, segmentation highlights and recommended next steps.
 
-- Orchestration via Airflow, Dagster, or Prefect instead of local runners.
-- Storage/lakehouse on S3/ADLS with Parquet and Delta/Iceberg as table formats.
-- Sources via databases/CDC instead of CSV files in the repo.
-- Medallion logic remains identical, only the infrastructure changes.
-- Deliberately outside the current scope, but conceivable as a production bridge.
-
----
-
-## 1. Project Overview
-
-**What this system does (end-to-end):**
-
-- Ingests raw CSV sources from `raw/source_crm` and `raw/source_erp` into Bronze snapshots.
-- Applies deterministic cleansing/standardization into Silver outputs.
-- Builds Gold marts and aggregates from Silver outputs.
-- Emits run metadata and HTML reports for each layer, plus a cross-step summary report.
-
-**Design intent:**
-
-- Demonstrate a complete, run-based Medallion pipeline on local filesystem artifacts.
-- Provide an auditable footprint (metadata, logs, reports) for each run.
-- Support agent-driven drafting/building steps while keeping runnable scripts as the system of record.
-
-**Target personas:**
-
-- Data Engineer (implementation and extension)
-- Reviewer/Architect (assessment of pipeline design and governance)
-- Maintainer (operational ownership and iteration)
-
-**Status and intended usage:**
-
-- **Status:** In progress; functional runners exist, coverage and CI are not finalized.
-- **Intended usage:** Local execution and portfolio review; not production-hardened.
-
----
-
-## 2. System Architecture
-
-**High-level flow:**
-
-```
-Raw CSV sources
-   → Bronze (snapshot + metadata)
-   → Silver (clean + standardized)
-   → Gold (marts + aggregates)
-   → Reports (per-layer + summary)
-```
-
-**Medallion responsibilities:**
-
-- **Bronze:** immutable snapshots with file-level metadata and checksums.
-- **Silver:** normalized, cleaned datasets with 1:1 table parity to Bronze inputs.
-- **Gold:** business-ready dimensional and aggregate outputs.
-
-**Run-based execution model:**
-
-- Each layer writes to a **run_id**-scoped directory under `artifacts/`.
-- Runs are **append-only**; re-runs produce a new run_id rather than overwriting outputs.
-- Downstream steps default to the latest available upstream run when no run_id is supplied.
-
-**Artifact lifecycle and storage locations:**
-
-- Bronze: `artifacts/bronze/<run_id>/...`
-- Silver: `artifacts/silver/<run_id>/...`
-- Gold: `artifacts/gold/marts/<run_id>/...`
-- Orchestrator logs: `artifacts/orchestrator/<run_id>/logs/...`
-- Summary report: `artifacts/reports/<run_id>/summary_report.*`
-
-**Reference diagram:** `docs/workflow_schema.jpg`
-
-For design rationale and conventions (run_id format, layering, artifacts), see the ADR index: `docs/adr/0000-adr-index.md`.
-
----
-
-## 3. Repository Structure
-
-Curated view of key directories:
-
-```
-src/         # Runners, agents, and templates (system logic)
-artifacts/   # Run outputs and reports (local filesystem)
-tmp/         # Ephemeral, non-versioned analysis outputs
-
-docs/        # Architecture docs, ADRs, prompts
-
-tests/       # Unit/integration tests (expanding)
-```
-
-**Never commit:**
-
-- `.env` files or any secrets
-- `tmp/` outputs or prompt analysis artifacts
-- Generated run outputs under `artifacts/` and local raw data under `raw/`
-
----
-
-## 4. Execution Model (Single Source of Truth)
-
-**Entry points:**
-
-- **Bronze:** `src/runs/load_1_bronze_layer.py`
-- **Silver:** `src/runs/load_2_silver_layer.py`
-- **Gold:** `src/runs/load_3_gold_layer.py`
-- **End-to-end orchestration:** `src/runs/orchestrator.py`
-
-**Canonical commands:**
+To execute the Golden Path, run the following command from the project root:
 
 ```bash
-python src/runs/load_1_bronze_layer.py \
-  --raw-crm raw/source_crm \
-  --raw-erp raw/source_erp \
-  --bronze-root artifacts/bronze
-
-python src/runs/load_2_silver_layer.py <bronze_run_id>
-
-python src/runs/load_3_gold_layer.py <silver_run_id> [gold_run_id]
+python src/pipeline/golden_path.py --run-id <optional_custom_id> --seed 42
 ```
 
-**Expected behavior:**
+If no `--run-id` is provided a new timestamp‑based run identifier is generated automatically.  The optional `--seed` parameter controls all stochastic elements (e.g. k‑means initialisation) to ensure deterministic outputs across runs.
 
-- Bronze snapshots raw files and writes `metadata.yaml`, `run_log.txt`, and `elt_report.html`.
-- Silver reads a specific Bronze run (or latest by default), applies standardization, and writes Silver outputs plus reports.
-- Gold reads a specific Silver run (or latest by default), validates required schemas, and writes marts/aggregates plus reports.
+## Unified Artifact Contract
 
-**Idempotency and re-run behavior:**
+Each pipeline run writes its outputs into `artifacts/runs/<run_id>/`.  The following structure is produced:
 
-- Each run writes to a new run_id, ensuring immutability of previous outputs.
-- To re-run with a fixed run_id, pass it explicitly (Bronze: `--run-id`, Gold: optional argument).
+```
+artifacts/runs/<run_id>/
+├── _meta/
+│   ├── run_manifest.json       # metadata: run_id, seed, input checksums, timestamps, status
+│   └── data_policy.json        # GDPR data policy: detected personal fields and how they were handled
+├── bronze/
+│   ├── data/*.csv              # raw CSV copies (byte‑for‑byte)
+│   ├── reports/bronze_report.md # bronze load report
+│   └── _meta/bronze_metadata.yaml      # bronze run metadata
+├── silver/
+│   ├── data/*.csv              # cleaned tables
+│   ├── reports/silver_quality_report.md # silver quality report
+│   └── _meta/silver_metadata.yaml      # silver run metadata
+├── gold/
+│   ├── data/*.csv              # star schema tables and aggregates
+│   ├── reports/gold_marts_report.md
+│   └── _meta/gold_metadata.yaml
+├── step1_eda/
+│   ├── data/eda_summary.json   # summary statistics (no PII)
+│   └── reports/eda_report.md   # narrative EDA report
+├── step2_feature_engineering/
+│   ├── data/customer_features.csv # engineered feature table
+│   └── reports/feature_dictionary.md # description of engineered features
+├── step3_segmentation/
+│   ├── data/customer_segments.csv   # pseudonymised customer id with cluster assignment
+│   ├── _meta/model_metadata.json    # algorithm parameters, seed, feature list
+│   └── reports/segmentation_report.md # cluster sizes and differentiators
+└── reports/
+    └── final_expose.md         # executive summary report
+```
 
----
+All personally identifying columns (e.g. first name, last name, business key) are either removed or pseudonymised via a stable hash using a secret salt stored in a local `.env` file.  The `data_policy.json` records which columns were considered personal and how they were handled.
 
-## 5. Quick Start (Reproducible)
+## GDPR and Data Safety
 
-### Prerequisites
+The pipeline is designed to be **GDPR‑safe by default**.  Raw inputs may include customer names and business identifiers.  During the Silver and Gold stages direct identifiers are retained only in the protected run folder.  Subsequent steps (feature engineering, clustering, final reports) drop or hash these identifiers.  Tests enforce that no PII appears in final outputs.
 
-- Python **3.10+**
-- `git`
+For details on the data policy and pseudonymisation methods see [`docs/data_policy.md`](docs/data_policy.md).
 
-### Environment setup
+## Documentation
+
+This repository uses [`docs/`](docs/) as the single source of truth for architecture, data policy, and runbook information.  Key documents include:
+
+- [`docs/architecture/golden_path.md`](docs/architecture/golden_path.md) – detailed description of each pipeline step.
+- [`docs/architecture/artifact_contract.md`](docs/architecture/artifact_contract.md) – specification of the unified run folder layout.
+- [`docs/architecture/ml_segmentation_flow.md`](docs/architecture/ml_segmentation_flow.md) – design of the ML segmentation pipeline.
+- [`docs/runbook.md`](docs/runbook.md) – how to run the pipeline locally, validate results, and troubleshoot.
+
+## Running Tests
+
+Tests live under `tests/` and are executed via `pytest`.  To run the full test suite and an end‑to‑end smoke test, execute:
 
 ```bash
-git clone https://github.com/KonstantinData/agentic-elt-data-warehouse.git
-cd agentic-elt-data-warehouse
-python -m venv .venv
-source .venv/bin/activate     # macOS / Linux
-.venv\Scripts\activate         # Windows
-pip install -r requirements.txt
+pytest -q
 ```
 
-### Prepare raw data
-
-```
-raw/
-├── source_crm/   # CSV inputs
-└── source_erp/   # CSV inputs
-```
-
-> Note: This repository implements a **data warehouse**, not a lakehouse.
-> CSV files under `raw/` act as reproducible stand-ins for upstream source systems.
-> In production, these sources would typically be databases or upstream lakehouse
-> tables (e.g. Delta/Iceberg), which feed the warehouse but are not part of it.
-
-Production equivalents (examples):
-
-- **Database (MySQL/Postgres/MSSQL):**
-  Extract via incremental watermark or CDC into Bronze snapshots.
-- **Upstream lakehouse systems (e.g. Databricks with Delta/Iceberg):**
-  Read curated upstream tables as a *source* and snapshot them into Bronze.
-  These systems are external to the warehouse and act purely as data providers.
-- **Object storage (S3/ADLS/GCS):**
-  Ingest partitioned files with manifests and checksums into Bronze.
-
-> Bronze represents the warehouse-internal landing and snapshot layer,
-> independent of whether the upstream source is a database, file system, or lakehouse table.
-
-Source contract (minimum expectations):
-
-- Deterministic snapshot boundary (timestamp / watermark / CDC version).
-- Stable table identifiers (source system + entity name).
-- Basic metadata capture (row counts, schema, file checksums or query hash).
-
-### Minimal end-to-end run (manual)
-
-```bash
-python src/runs/load_1_bronze_layer.py
-python src/runs/load_2_silver_layer.py
-python src/runs/load_3_gold_layer.py
-```
-
-**Expected outputs:**
-
-- Bronze: `artifacts/bronze/<run_id>/data` + `reports/elt_report.html`
-- Silver: `artifacts/silver/<run_id>/data` + `reports/elt_report.html`
-- Gold: `artifacts/gold/marts/<run_id>/data` + `reports/gold_report.html`
-
-### End-to-end orchestration (optional)
-
-The orchestrator executes Bronze → Silver → Gold and writes a summary report. It requires a `.env` file and valid LLM credentials unless `--skip-llm` is used.
-
-```bash
-python src/runs/orchestrator.py --skip-llm
-```
-
-Summary output:
-
-```
-artifacts/reports/<orchestrator_run_id>/summary_report.*
-```
-
----
-
-## 6. Configuration & Secrets
-
-- Configuration is managed via environment variables and a root-level `.env` file.
-- Start from `configs/.env.example` and add required keys locally (never commit `.env`).
-- The orchestrator validates the presence of `OPENAI_API_KEY` or `OPEN_AI_KEY`.
-- Layer paths can be overridden via env vars (e.g., `BRONZE_ROOT`, `SILVER_ROOT`, `GOLD_ROOT`).
-
----
-
-## 7. Data Quality & Governance
-
-- **Bronze:** captures file-level metadata, hashes, and run summaries.
-- **Silver:** applies standardization and lightweight normalization with row-level tracking.
-- **Gold:** validates required schemas before producing marts/aggregates.
-- **Lineage & metadata:** each layer writes `metadata.yaml` and a human-readable report.
-- **PII/GDPR:** no built-in masking; treat inputs as non-sensitive or enforce handling upstream.
-
-For governance details and standards, consult the ADRs: `docs/adr/0000-adr-index.md`.
-
----
-
-## 8. Observability & Operations
-
-- **Logging:** `run_log.txt` per layer and orchestrator logs under `artifacts/orchestrator/`.
-- **Run tracing:** `run_id` is propagated through Bronze → Silver → Gold.
-- **Failure modes:** downstream steps are skipped if upstream fails or no new data is detected.
-- **Backfill strategy:** run layers with explicit run_id inputs to target historical snapshots.
-- **Performance/scalability:** optimized for local CSV-scale workloads; not tuned for large-scale IO.
-
----
-
-## 9. Testing Strategy
-
-- **Unit tests:** core transformation logic and helpers.
-- **Integration tests:** end-to-end runs against fixture CSVs.
-- **Pipeline tests:** schema validation and artifact integrity checks.
-
-**Example checks:**
-
-- Schema checks (columns and data types).
-- Row counts / row diff checks between expected and actual outputs.
-- Output existence (e.g., files or tables created).
-- Key uniqueness checks (primary key duplicates).
-
-Run tests locally:
-
-```bash
-pytest
-```
-
-**Definition of Done**
-
-- New logic is covered by tests.
-- Artifacts and metadata ere updated as ecpected
-- ADRs are updated if architectual behaviour changes.
-
-**Definition of Done:**
-
-- New logic is covered by tests.
-- Artifacts and metadata are updated as expected.
-- ADRs are updated if architectural behavior changes.
-
----
-
-## 10. Architecture Decisions
-
-- ADR index: `docs/adr/0000-adr-index.md`
-- Add or update an ADR when changing:
-  - layer responsibilities
-  - run_id or artifact layout conventions
-  - data quality or governance rules
-  - agent/orchestrator execution flow
-
----
-
-## 11. Agentic / Prompt-Based Analysis
-
-- **Purpose:** draft plans and builders for Silver/Gold layers and code-quality evaluations.
-- **Prompts location:** `docs/prompts/` (see `docs/prompts/README.md`).
-- **Analysis outputs:** `tmp/prompt_analysis/` (non-versioned; see `tmp/prompt_analysis/README.md`).
-
----
-
-## 12. Contribution & Review
-
-**Review the system in this order:**
-
-1. This README
-2. ADR index (`docs/adr/0000-adr-index.md`)
-3. Runners in `src/runs/`
-4. Agents in `src/agents/`
-
-**Branching and commit expectations:**
-
-- Use short-lived feature branches.
-- Keep commits scoped and descriptive.
-- Update tests and ADRs when behavior changes.
-
-**Quality gates for PRs:**
-
-- Linting and tests pass (where applicable).
-- Documentation reflects behavior.
-- No secrets or generated artifacts are committed.
-
----
-
-## 13. Roadmap
-
-- Align `.env.example` with orchestrator requirements.
-- Add fixture data and integration tests for all three layers.
-- Add CI pipeline for linting and tests.
-
----
-
-## 14. License & Legal
-
-- License: MIT (`LICENSE`)
-- Data usage: raw inputs are user-provided; ensure you have rights to use any data placed under `raw/`.
+CI workflows (see `.github/workflows/ci.yml`) also run notebooks, perform placeholder scans, and enforce the documentation standard described in this README.
