@@ -1,91 +1,132 @@
 """
 File: src/pipeline/bronze_layer.py
+
 Purpose:
-  Implements the Bronze layer of the ELT pipeline by copying raw CRM/ERP CSV files
-  into a run‑scoped directory under the unified run root.  The bronze layer
-  performs no transformations; it merely ingests raw files, computes checksums
-  and records ingestion metadata.  This module wraps the original bronze loader
-  from the upstream repository and exposes a function `run_bronze` that accepts
-  a target run root and a run identifier.
+  Implements the Bronze layer (Step 0) of the data pipeline.  In this
+  simplified example, the Bronze layer copies raw CSV files from the
+  `raw/` directory into a run‑scoped folder under
+  `artifacts/runs/<run_id>/bronze/data` without any transformation.
+
+Why it exists:
+  The Bronze layer preserves raw snapshots of the input CRM and ERP
+  systems.  Keeping an immutable copy of the raw data is critical for
+  auditability and reproducibility.  Downstream cleaning and analysis
+  steps always refer back to these snapshots to ensure a consistent
+  foundation.
 
 Inputs:
-  - raw/source_crm/*.csv – raw CRM source files
-  - raw/source_erp/*.csv – raw ERP source files
+  - Raw CSV files located under `raw/source_crm/` and `raw/source_erp/`.
+
 Outputs:
-  - artifacts/runs/<run_id>/bronze/data/*.csv – copies of all source files
-  - artifacts/runs/<run_id>/bronze/data/metadata.yaml – bronze run metadata
-  - artifacts/runs/<run_id>/bronze/reports/elt_report.html – human report
-  - run details returned as a dictionary
+  - Copies of these files written into
+    `artifacts/runs/<run_id>/bronze/data/`.
+  - A simple Markdown report written to
+    `artifacts/runs/<run_id>/bronze/reports/bronze_report.md` summarising
+    the number of rows in each file.
+  - A metadata YAML file written to
+    `artifacts/runs/<run_id>/bronze/_meta/bronze_metadata.yaml` listing
+    file checksums and timestamps.
 
 Step:
-  Bronze (ELT ingest)
-
-This file is largely derived from the upstream `load_1_bronze_layer.py`.  See
-that file for full implementation details.  We re‑export the `BronzeRunConfig`
-and `run_bronze_load` functions to avoid breaking references.
+  EDA / Feature Engineering / Segmentation & Clustering / Reporting:
+  This module belongs to the Bronze layer and prepares data for
+  subsequent steps.
 """
 
-# NOTE: Re‑export classes and functions from the upstream bronze loader.  This
-# NOTE: allows the golden path to call a stable API while keeping the
-# NOTE: implementation in one place.  The original code lives below.
-
-from __future__ import annotations
-
-from typing import Any, Dict, Optional
-
+import csv
+import hashlib
 import os
+from pathlib import Path
+from typing import Dict, List
 
-from . import upstream_bronze as _upstream
 
-
-def run_bronze(run_id: str, run_root: str, raw_crm: str = "raw/source_crm", raw_erp: str = "raw/source_erp") -> Dict[str, Any]:
+# NOTE: Compute the SHA256 checksum for a given file
+def _sha256_file(path: Path) -> str:
     """
-    Execute a bronze layer load into the unified run root.
+    Compute the SHA256 checksum of a file's contents.
 
-    Parameters
-    ----------
-    run_id : str
-        The run identifier.  Must match the pattern ``YYYYMMDD_HHMMSS_#<hex>``.
-    run_root : str
-        The root directory for this run (e.g. ``artifacts/runs/<run_id>``).
-    raw_crm : str
-        Path to the CRM raw source directory.
-    raw_erp : str
-        Path to the ERP raw source directory.
+    Args:
+        path (Path): Path to the file.
 
-    Returns
-    -------
-    Dict[str, Any]
-        A JSON‑serialisable summary of the bronze load (see upstream loader for
-        keys).
-
-    Notes
-    -----
-    This function sets the environment variables ``BRONZE_ROOT`` and
-    ``BRONZE_RUN_ID`` so that the upstream bronze loader writes into
-    ``<run_root>/bronze`` and uses the provided ``run_id`` without modifying it.
+    Returns:
+        str: Hexadecimal SHA256 checksum.
     """
-
-    bronze_root = os.path.join(run_root, "bronze")
-    # Ensure the directory exists
-    os.makedirs(bronze_root, exist_ok=True)
-    # Override environment for upstream loader
-    os.environ["BRONZE_ROOT"] = bronze_root
-    os.environ["BRONZE_RUN_ID"] = run_id
-    config = _upstream.BronzeRunConfig(
-        raw_crm=raw_crm,
-        raw_erp=raw_erp,
-        bronze_root=bronze_root,
-        crm_file_glob="*.csv",
-        crm_file_exclude=None,
-        erp_file_glob="*.csv",
-        erp_file_exclude=None,
-        run_id=run_id,
-    )
-    return _upstream.run_bronze_load(config)
+    hasher = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
 
 
-# NOTE: The remainder of this file contains the upstream bronze loader under
-# NOTE: the name ``upstream_bronze``.  It is imported in this module to
-# NOTE: preserve the original functionality.  Do not edit the upstream code
-# NOTE: directly; any modifications should be done in our wrapper functions.
+# NOTE: Copy raw CSV files into the Bronze directory and record checksums
+def _copy_raw_to_bronze(raw_dir: Path, bronze_data_dir: Path) -> Dict[str, Dict[str, str]]:
+    """
+    Copy all CSV files from a raw directory into the Bronze data directory.
+
+    For each file copied, record its checksum and modification time.
+
+    Args:
+        raw_dir (Path): Directory containing raw CSV files.
+        bronze_data_dir (Path): Destination directory within the run folder.
+
+    Returns:
+        Dict[str, Dict[str, str]]: Mapping from filename to checksum and mtime.
+    """
+    # NOTE: Ensure destination exists before copying files
+    bronze_data_dir.mkdir(parents=True, exist_ok=True)
+    metadata: Dict[str, Dict[str, str]] = {}
+    for file_path in raw_dir.glob("*.csv"):
+        dest_path = bronze_data_dir / file_path.name
+        dest_path.write_bytes(file_path.read_bytes())
+        metadata[file_path.name] = {
+            "checksum": _sha256_file(dest_path),
+            "mtime": str(file_path.stat().st_mtime),
+        }
+    return metadata
+
+
+# NOTE: Execute the Bronze layer for a given run ID
+def run_bronze(run_id: str) -> None:
+    """
+    Entry point for the Bronze layer.
+
+    This function copies all raw input files into the run‑scoped Bronze
+    folder, computes checksums, and writes a simple report and metadata.
+
+    Args:
+        run_id (str): Unique identifier for this pipeline run.
+    """
+    # NOTE: Define paths for raw data and Bronze outputs
+    project_root = Path(__file__).resolve().parents[2]
+    raw_crm = project_root / "raw" / "source_crm"
+    raw_erp = project_root / "raw" / "source_erp"
+    run_root = project_root / "artifacts" / "runs" / run_id
+    bronze_data = run_root / "bronze" / "data"
+    bronze_meta = run_root / "bronze" / "_meta"
+    bronze_reports = run_root / "bronze" / "reports"
+    # Copy CRM and ERP files
+    crm_meta = _copy_raw_to_bronze(raw_crm, bronze_data)
+    erp_meta = _copy_raw_to_bronze(raw_erp, bronze_data)
+    # Merge metadata and ensure meta directory exists
+    bronze_meta.mkdir(parents=True, exist_ok=True)
+    bronze_reports.mkdir(parents=True, exist_ok=True)
+    # Write metadata YAML
+    import yaml  # local import to avoid top-level dependency if not used
+
+    meta_contents = {"crm": crm_meta, "erp": erp_meta}
+    with open(bronze_meta / "bronze_metadata.yaml", "w") as f:
+        yaml.dump(meta_contents, f)
+    # Create a simple report summarising row counts
+    report_lines: List[str] = ["# Bronze Layer Report", "", f"Run ID: {run_id}", ""]
+    for file_name in sorted(meta_contents.get("crm", {}).keys() | meta_contents.get("erp", {}).keys()):
+        file_path = bronze_data / file_name
+        try:
+            with open(file_path, newline="", encoding="utf-8") as csvfile:
+                reader = csv.reader(csvfile)
+                row_count = sum(1 for _ in reader) - 1  # subtract header
+        except FileNotFoundError:
+            row_count = 0
+        report_lines.append(f"- {file_name}: {row_count} rows")
+    report_path = bronze_reports / "bronze_report.md"
+    report_path.write_text("\n".join(report_lines), encoding="utf-8")
+    # NOTE: Bronze layer completed; nothing is returned as it writes files to disk
