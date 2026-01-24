@@ -57,7 +57,7 @@ def read_yaml(path: Path) -> Dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 def create_business_charts(gold_data_dir: Path, charts_dir: Path) -> List[str]:
-    """Create C-Level business charts and return list of chart filenames."""
+    """Create C-Level business charts using actual Gold layer data."""
     charts_dir.mkdir(exist_ok=True)
     chart_files = []
     
@@ -65,67 +65,116 @@ def create_business_charts(gold_data_dir: Path, charts_dir: Path) -> List[str]:
     sns.set_palette("husl")
     
     try:
-        # 1. Executive KPIs Trend Chart
+        # 1. Executive KPIs Trend Chart - Use actual KPI data
         kpi_file = gold_data_dir / "gold_agg_exec_kpis.csv"
         if kpi_file.exists():
             df = pd.read_csv(kpi_file)
-            if not df.empty and 'period' in df.columns:
-                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+            if not df.empty and 'customer_segment' in df.columns:
+                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
                 
-                # Revenue trend
-                ax1.plot(df['period'], df['total_sales'], marker='o', linewidth=2)
-                ax1.set_title('Monthly Revenue Trend', fontsize=14, fontweight='bold')
-                ax1.set_ylabel('Revenue (€)')
-                ax1.tick_params(axis='x', rotation=45)
+                # Revenue by segment
+                if 'total_sales' in df.columns:
+                    segments = df['customer_segment'].fillna('Unknown')
+                    sales = df['total_sales']
+                    ax1.bar(segments, sales, color=['#2E8B57', '#4682B4', '#FF6347'], alpha=0.8)
+                    ax1.set_title('Revenue by Customer Segment', fontsize=16, fontweight='bold', pad=20)
+                    ax1.set_ylabel('Revenue (€)', fontsize=12)
+                    ax1.grid(True, alpha=0.3)
+                    ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'€{x:,.0f}'))
+                    
+                    # Add value labels on bars
+                    for i, v in enumerate(sales):
+                        ax1.text(i, v + v*0.01, f'€{v:,.0f}', ha='center', va='bottom', fontweight='bold')
                 
-                # Average price trend
-                ax2.bar(df['period'], df['average_price'], alpha=0.7)
-                ax2.set_title('Average Transaction Value', fontsize=14, fontweight='bold')
-                ax2.set_ylabel('Price (€)')
-                ax2.tick_params(axis='x', rotation=45)
+                # Customer count by segment
+                if 'customer_count' in df.columns:
+                    customers = df['customer_count']
+                    ax2.bar(segments, customers, color=['#FF6347', '#FFD700', '#9370DB'], alpha=0.8)
+                    ax2.set_title('Customer Count by Segment', fontsize=16, fontweight='bold', pad=20)
+                    ax2.set_ylabel('Customer Count', fontsize=12)
+                    ax2.grid(True, alpha=0.3)
+                    
+                    # Add value labels on bars
+                    for i, v in enumerate(customers):
+                        ax2.text(i, v + v*0.01, f'{v:,}', ha='center', va='bottom', fontweight='bold')
                 
                 plt.tight_layout()
                 chart_path = charts_dir / "executive_kpis_trend.png"
-                plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+                plt.savefig(chart_path, dpi=300, bbox_inches='tight', facecolor='white')
                 plt.close()
                 chart_files.append(chart_path.name)
+                logger.info(f"Created executive KPIs chart with {len(df)} segments")
         
-        # 2. Data Quality Dashboard
-        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12, 8))
+        # 2. Business Performance Dashboard - Use actual business data
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 10))
         
-        # Data volume metrics
-        files = ['Customers', 'Products', 'Sales', 'KPIs']
-        counts = [18485, 397, 60406, 6]
-        ax1.bar(files, counts, color=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728'])
-        ax1.set_title('Data Volume by Entity', fontweight='bold')
-        ax1.set_ylabel('Record Count')
+        # Customer segmentation from actual data
+        customer_file = gold_data_dir / "gold_dim_customer.csv"
+        if customer_file.exists():
+            df_customers = pd.read_csv(customer_file)
+            if 'country' in df_customers.columns:
+                top_countries = df_customers['country'].value_counts().head(5)
+                ax1.bar(top_countries.index, top_countries.values, color='#4682B4', alpha=0.8)
+                ax1.set_title('Top 5 Markets by Customer Count', fontweight='bold', fontsize=14)
+                ax1.set_ylabel('Customers')
+                ax1.tick_params(axis='x', rotation=45)
         
-        # Data quality score
-        quality_score = 100
-        ax2.pie([quality_score, 100-quality_score], labels=['Quality', ''], 
-               colors=['#2ca02c', '#f0f0f0'], startangle=90)
-        ax2.set_title(f'Data Quality Score: {quality_score}%', fontweight='bold')
+        # Product performance from actual data
+        product_file = gold_data_dir / "gold_dim_product.csv"
+        if product_file.exists():
+            df_products = pd.read_csv(product_file)
+            if 'category' in df_products.columns:
+                categories = df_products['category'].value_counts().head(6)
+                ax2.pie(categories.values, labels=categories.index, autopct='%1.1f%%', startangle=90)
+                ax2.set_title('Product Portfolio Distribution', fontweight='bold', fontsize=14)
         
-        # Pipeline performance
-        stages = ['Bronze', 'Silver', 'Gold', 'Reports']
-        success_rates = [100, 100, 100, 100]
-        ax3.bar(stages, success_rates, color='#2ca02c')
-        ax3.set_title('Pipeline Success Rate', fontweight='bold')
-        ax3.set_ylabel('Success Rate (%)')
-        ax3.set_ylim(0, 110)
+        # Sales performance from actual data
+        sales_file = gold_data_dir / "gold_fact_sales.csv"
+        if sales_file.exists():
+            df_sales = pd.read_csv(sales_file)
+            if 'sales_amount' in df_sales.columns:
+                # Sales distribution histogram
+                ax3.hist(df_sales['sales_amount'], bins=20, alpha=0.7, color='#2E8B57', edgecolor='black')
+                ax3.set_title('Transaction Value Distribution', fontweight='bold', fontsize=14)
+                ax3.set_xlabel('Transaction Amount (€)')
+                ax3.set_ylabel('Frequency')
+                ax3.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'€{x:,.0f}'))
         
-        # Processing time
-        times = ['Bronze', 'Silver', 'Gold', 'Business\nInsights']
-        durations = [0.7, 148.1, 182.2, 53.3]
-        ax4.bar(times, durations, color='#ff7f0e')
-        ax4.set_title('Processing Time by Stage', fontweight='bold')
-        ax4.set_ylabel('Duration (seconds)')
+        # Business metrics summary
+        metrics = ['Revenue', 'Customers', 'Products', 'Transactions']
+        values = [0, 0, 0, 0]
+        
+        # Get actual counts
+        if customer_file.exists():
+            values[1] = len(pd.read_csv(customer_file))
+        if product_file.exists():
+            values[2] = len(pd.read_csv(product_file))
+        if sales_file.exists():
+            df_sales = pd.read_csv(sales_file)
+            values[3] = len(df_sales)
+            if 'sales_amount' in df_sales.columns:
+                values[0] = df_sales['sales_amount'].sum()
+        
+        bars = ax4.bar(metrics, values, color=['#2E8B57', '#4682B4', '#FF6347', '#FFD700'], alpha=0.8)
+        ax4.set_title('Business Metrics Overview', fontweight='bold', fontsize=14)
+        ax4.set_ylabel('Count / Amount')
+        
+        # Add value labels on bars
+        for bar, value in zip(bars, values):
+            height = bar.get_height()
+            if metrics[bars.index(bar)] == 'Revenue':
+                ax4.text(bar.get_x() + bar.get_width()/2., height + height*0.01,
+                        f'€{value:,.0f}', ha='center', va='bottom', fontweight='bold')
+            else:
+                ax4.text(bar.get_x() + bar.get_width()/2., height + height*0.01,
+                        f'{value:,}', ha='center', va='bottom', fontweight='bold')
         
         plt.tight_layout()
-        chart_path = charts_dir / "data_quality_dashboard.png"
-        plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+        chart_path = charts_dir / "business_performance_dashboard.png"
+        plt.savefig(chart_path, dpi=300, bbox_inches='tight', facecolor='white')
         plt.close()
         chart_files.append(chart_path.name)
+        logger.info("Created business performance dashboard")
         
     except Exception as exc:
         logger.warning(f"Chart creation failed: {exc}")

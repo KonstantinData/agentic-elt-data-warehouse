@@ -1,0 +1,22 @@
+2026-01-25 00:14:43,098 INFO Starting business insights report generation for run_id=20260124_231016_#6470e523
+2026-01-25 00:15:06,421 INFO HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-01-25 00:15:06,429 INFO C-Level report LLM call completed in 22.45s, tokens: {'prompt_tokens': 7457, 'completion_tokens': 972, 'total_tokens': 8429}
+2026-01-25 00:15:20,467 INFO HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-01-25 00:15:20,469 INFO Marketing report LLM call completed in 14.04s, tokens: {'prompt_tokens': 626, 'completion_tokens': 824, 'total_tokens': 1450}
+2026-01-25 00:15:36,223 INFO HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-01-25 00:15:36,231 INFO Sales report LLM call completed in 15.76s, tokens: {'prompt_tokens': 625, 'completion_tokens': 794, 'total_tokens': 1419}
+2026-01-25 00:15:53,422 INFO HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-01-25 00:15:53,424 INFO Customer Service report LLM call completed in 17.19s, tokens: {'prompt_tokens': 633, 'completion_tokens': 763, 'total_tokens': 1396}
+2026-01-25 00:16:12,731 INFO HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-01-25 00:16:12,731 INFO Product Management report LLM call completed in 19.31s, tokens: {'prompt_tokens': 633, 'completion_tokens': 915, 'total_tokens': 1548}
+2026-01-25 00:16:28,288 INFO HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-01-25 00:16:28,291 INFO IT Operations report LLM call completed in 15.56s, tokens: {'prompt_tokens': 634, 'completion_tokens': 790, 'total_tokens': 1424}
+2026-01-25 00:16:28,292 INFO C-Level executive report saved to: D:\Git-GitHub\Repositories\07-Portfolio\agentic-elt-data-warehouse\artifacts\reports\20260124_231016_#6470e523\c_level_executive_report.md
+2026-01-25 00:16:28,294 INFO Marketing team report saved to: D:\Git-GitHub\Repositories\07-Portfolio\agentic-elt-data-warehouse\artifacts\reports\20260124_231016_#6470e523\team_reports\marketing_team_report.md
+2026-01-25 00:16:28,294 INFO Sales team report saved to: D:\Git-GitHub\Repositories\07-Portfolio\agentic-elt-data-warehouse\artifacts\reports\20260124_231016_#6470e523\team_reports\sales_team_report.md
+2026-01-25 00:16:28,294 INFO Customer Service team report saved to: D:\Git-GitHub\Repositories\07-Portfolio\agentic-elt-data-warehouse\artifacts\reports\20260124_231016_#6470e523\team_reports\customer_service_team_report.md
+2026-01-25 00:16:28,299 INFO Product Management team report saved to: D:\Git-GitHub\Repositories\07-Portfolio\agentic-elt-data-warehouse\artifacts\reports\20260124_231016_#6470e523\team_reports\product_management_team_report.md
+2026-01-25 00:16:28,299 INFO IT Operations team report saved to: D:\Git-GitHub\Repositories\07-Portfolio\agentic-elt-data-warehouse\artifacts\reports\20260124_231016_#6470e523\team_reports\it_operations_team_report.md
+2026-01-25 00:16:28,299 INFO C-Level executive report saved to: D:\Git-GitHub\Repositories\07-Portfolio\agentic-elt-data-warehouse\artifacts\reports\20260124_231016_#6470e523\c_level_executive_report.md
+2026-01-25 00:16:28,299 INFO Generated 5 team reports
+2026-01-25 00:16:28,299 INFO Total token usage: {'prompt_tokens': 10608, 'completion_tokens': 5058, 'total_tokens': 15666}

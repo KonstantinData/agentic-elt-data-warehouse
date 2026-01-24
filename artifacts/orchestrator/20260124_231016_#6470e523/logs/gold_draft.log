@@ -1,0 +1,8 @@
+2026-01-25 00:12:50,791 INFO httpx - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-01-25 00:12:50,795 INFO __main__ - Gold design report LLM call completed in 24.20s, tokens: {'prompt_tokens': 4931, 'completion_tokens': 1877, 'total_tokens': 6808}
+2026-01-25 00:12:50,795 INFO __main__ - Wrote Gold design report to: D:\Git-GitHub\Repositories\07-Portfolio\agentic-elt-data-warehouse\tmp\draft_reports\gold\20260124_231016_#6470e523\gold_run_human_report.md
+2026-01-25 00:13:25,273 INFO httpx - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-01-25 00:13:25,394 INFO __main__ - Gold mart plan LLM call completed in 34.60s, tokens: {'prompt_tokens': 5229, 'completion_tokens': 2600, 'total_tokens': 7829}
+2026-01-25 00:13:25,394 INFO __main__ - Wrote Gold mart plan to: D:\Git-GitHub\Repositories\07-Portfolio\agentic-elt-data-warehouse\tmp\draft_reports\gold\20260124_231016_#6470e523\gold_run_agent_context.json
+2026-01-25 00:13:25,394 INFO __main__ - Gold Draft Agent total token usage: {'design_report_tokens': {'prompt_tokens': 4931, 'completion_tokens': 1877, 'total_tokens': 6808}, 'mart_plan_tokens': {'prompt_tokens': 5229, 'completion_tokens': 2600, 'total_tokens': 7829}, 'total_prompt_tokens': 10160, 'total_completion_tokens': 4477, 'total_tokens': 14637}
+2026-01-25 00:13:25,394 INFO __main__ - Gold-layer planning completed successfully.

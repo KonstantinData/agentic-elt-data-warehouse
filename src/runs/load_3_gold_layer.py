@@ -52,7 +52,6 @@ Expected Silver tables and key columns:
     sls_ship_dt    : ship date (int, YYYYMMDD)
     sls_due_dt     : due date (int, YYYYMMDD)
 - prd_info.csv
-    prd_id         : product id (int)
     prd_key        : product key (string)
     prd_nm         : product name
     prd_cost       : product cost
@@ -78,24 +77,6 @@ Expected Silver tables and key columns:
 - LOC_A101.csv
     CID            : location/customer business id (e.g. 'AW-00011000')
     CNTRY          : country name
-- customer_info.csv
-    customer_id    : integer
-    firstname      : string
-    lastname       : string
-    gender         : string
-    date_of_birth  : datetime
-- product_info.csv
-    product_id     : integer
-    product_name   : string
-    category       : string
-    price          : float
-- sales_transactions.csv
-    transaction_id : integer
-    customer_id    : integer
-    product_id     : integer
-    quantity       : integer
-    unit_price     : float
-    transaction_date: datetime
 
 OUTPUT:
   artifacts/gold/marts/<gold_run_id>/
@@ -357,116 +338,96 @@ def build_gold_dim_customer(
     cst_info: pd.DataFrame,
     cst_az12: Optional[pd.DataFrame],
     loc: Optional[pd.DataFrame],
-    customer_info: Optional[pd.DataFrame],
 ) -> pd.DataFrame:
     """
     Build gold_dim_customer:
-    - One row per customer (cst_id)
-    - Merge cst_info, CST_AZ12, LOC_A101, customer_info
-    - Attributes: cst_id, cst_key, cst_firstname, cst_lastname, cst_marital_status, cst_gndr, cst_create_date, CID, BDATE, GEN, CNTRY, customer_info fields
-    - Standardize missing values in gender fields (GEN, cst_gndr)
+    - One row per customer (cst_key, preferred over cst_id)
+    - Merge cst_info, CST_AZ12, LOC_A101
+    - Attributes: cst_key, cst_id, cst_firstname, cst_lastname, cst_marital_status, cst_gndr, cst_create_date, BDATE, GEN, CNTRY
+    - Standardize missing values: gender, marital status, names, create date, country
     """
     cst = cst_info.copy()
-    cst["cst_id"] = pd.to_numeric(cst["cst_id"], errors="coerce")
     cst["cst_key"] = cst["cst_key"].astype(str)
-    # Merge CST_AZ12
+    cst["cst_id"] = pd.to_numeric(cst["cst_id"], errors="coerce")
+    # Standardize missing values
+    cst["cst_firstname"] = cst["cst_firstname"].fillna("Unknown")
+    cst["cst_lastname"] = cst["cst_lastname"].fillna("Unknown")
+    cst["cst_marital_status"] = cst["cst_marital_status"].fillna("Unknown")
+    cst["cst_gndr"] = cst["cst_gndr"].fillna("Unknown")
+    cst["cst_create_date"] = cst["cst_create_date"].fillna("")
+    # Merge CST_AZ12 on cst_key ~ CID (remove dashes for join)
     if cst_az12 is not None:
         az = cst_az12.copy()
         az["CID"] = az["CID"].astype(str)
-        az["BDATE"] = pd.to_numeric(az["BDATE"], errors="coerce")
-        az["GEN"] = az["GEN"].astype(str)
-        # Join on cst_key == CID (removing dashes)
-        cst["CID"] = cst["cst_key"].str.replace("-", "", regex=False)
         az["CID_norm"] = az["CID"].str.replace("-", "", regex=False)
+        cst["CID_norm"] = cst["cst_key"].str.replace("-", "", regex=False)
+        az["GEN"] = az["GEN"].fillna("Unknown")
         cst = cst.merge(
             az[["CID_norm", "BDATE", "GEN"]],
-            left_on="CID",
+            left_on="CID_norm",
             right_on="CID_norm",
             how="left",
         )
         cst = cst.drop(columns=["CID_norm"])
     else:
         cst["BDATE"] = None
-        cst["GEN"] = None
-    # Merge LOC_A101
+        cst["GEN"] = "Unknown"
+    # Merge LOC_A101 on cst_key ~ CID (remove dashes for join)
     if loc is not None:
         loc_df = loc.copy()
         loc_df["CID"] = loc_df["CID"].astype(str)
         loc_df["CID_norm"] = loc_df["CID"].str.replace("-", "", regex=False)
+        cst["CID_norm2"] = cst["cst_key"].str.replace("-", "", regex=False)
+        loc_df["CNTRY"] = loc_df["CNTRY"].fillna("Unknown")
         cst = cst.merge(
             loc_df[["CID_norm", "CNTRY"]],
-            left_on="CID",
+            left_on="CID_norm2",
             right_on="CID_norm",
             how="left",
         )
-        cst = cst.drop(columns=["CID_norm"])
+        cst = cst.drop(columns=["CID_norm2", "CID_norm"])
     else:
-        cst["CNTRY"] = None
-    # Merge customer_info (enrichment, only 5 rows)
-    if customer_info is not None:
-        ci = customer_info.copy()
-        ci["customer_id"] = pd.to_numeric(ci["customer_id"], errors="coerce")
-        ci["firstname"] = ci["firstname"].astype(str)
-        ci["lastname"] = ci["lastname"].astype(str)
-        ci["gender"] = ci["gender"].astype(str)
-        ci["date_of_birth"] = ci["date_of_birth"].astype(str)
-        # Try to join on cst_id == customer_id
-        cst = cst.merge(
-            ci[["customer_id", "firstname", "lastname", "gender", "date_of_birth"]],
-            left_on="cst_id",
-            right_on="customer_id",
-            how="left",
-            suffixes=("", "_ci"),
-        )
-    else:
-        cst["firstname"] = None
-        cst["lastname"] = None
-        cst["gender"] = None
-        cst["date_of_birth"] = None
-    # Standardize missing values in gender fields
-    cst["cst_gndr"] = cst["cst_gndr"].replace({None: "", "nan": "", "": None})
-    cst["GEN"] = cst["GEN"].replace({None: "", "nan": "", "": None})
-    # Select columns
+        cst["CNTRY"] = "Unknown"
+    # Select columns, deduplicate by cst_key
     out_cols = [
-        "cst_id",
         "cst_key",
+        "cst_id",
         "cst_firstname",
         "cst_lastname",
         "cst_marital_status",
         "cst_gndr",
         "cst_create_date",
-        "CID",
         "BDATE",
         "GEN",
         "CNTRY",
-        "firstname",
-        "lastname",
-        "gender",
-        "date_of_birth",
     ]
     for col in out_cols:
         if col not in cst.columns:
             cst[col] = None
-    cst = cst.drop_duplicates(subset=["cst_id"])
+    cst = cst.drop_duplicates(subset=["cst_key"])
     return cst[out_cols]
 
 
 def build_gold_dim_product(
     prd_info: pd.DataFrame,
     px_cat: Optional[pd.DataFrame],
-    product_info: Optional[pd.DataFrame],
 ) -> pd.DataFrame:
     """
     Build gold_dim_product:
-    - One row per product (prd_id)
-    - Merge prd_info, PX_CAT_G1V2, product_info
-    - Attributes: prd_id, prd_key, prd_nm, prd_cost, prd_line, prd_start_dt, prd_end_dt, ID, CAT, SUBCAT, MAINTENANCE, product_name, category, price
-    - Standardize missing values in prd_cost, prd_end_dt, prd_line
+    - One row per product (prd_key)
+    - Merge prd_info, PX_CAT_G1V2
+    - Attributes: prd_key, prd_id, prd_nm, prd_cost, prd_line, prd_start_dt, prd_end_dt, CAT, SUBCAT, MAINTENANCE
+    - Standardize missing values: prd_cost, prd_line, prd_end_dt
     """
     prd = prd_info.copy()
-    prd["prd_id"] = pd.to_numeric(prd["prd_id"], errors="coerce")
     prd["prd_key"] = prd["prd_key"].astype(str)
-    # Merge PX_CAT_G1V2
+    prd["prd_id"] = prd["prd_id"] if "prd_id" in prd.columns else None
+    prd["prd_nm"] = prd["prd_nm"].fillna("Unknown")
+    prd["prd_cost"] = prd["prd_cost"].fillna(-1)
+    prd["prd_line"] = prd["prd_line"].fillna("Unknown")
+    prd["prd_start_dt"] = prd["prd_start_dt"].fillna("")
+    prd["prd_end_dt"] = prd["prd_end_dt"].fillna("")
+    # Merge PX_CAT_G1V2 on prd_key == ID
     if px_cat is not None:
         px = px_cat.copy()
         px["ID"] = px["ID"].astype(str)
@@ -477,53 +438,25 @@ def build_gold_dim_product(
             how="left",
         )
     else:
-        prd["ID"] = prd["prd_key"]
         prd["CAT"] = None
         prd["SUBCAT"] = None
         prd["MAINTENANCE"] = None
-    # Merge product_info (enrichment, only 4 rows)
-    if product_info is not None:
-        pi = product_info.copy()
-        pi["product_id"] = pd.to_numeric(pi["product_id"], errors="coerce")
-        pi["product_name"] = pi["product_name"].astype(str)
-        pi["category"] = pi["category"].astype(str)
-        pi["price"] = pd.to_numeric(pi["price"], errors="coerce")
-        # Try to join on prd_id == product_id
-        prd = prd.merge(
-            pi[["product_id", "product_name", "category", "price"]],
-            left_on="prd_id",
-            right_on="product_id",
-            how="left",
-            suffixes=("", "_pi"),
-        )
-    else:
-        prd["product_name"] = None
-        prd["category"] = None
-        prd["price"] = None
-    # Standardize missing values
-    for col in ["prd_cost", "prd_end_dt", "prd_line"]:
-        if col in prd.columns:
-            prd[col] = prd[col].replace({None: "", "nan": "", "": None})
     out_cols = [
-        "prd_id",
         "prd_key",
+        "prd_id",
         "prd_nm",
         "prd_cost",
         "prd_line",
         "prd_start_dt",
         "prd_end_dt",
-        "ID",
         "CAT",
         "SUBCAT",
         "MAINTENANCE",
-        "product_name",
-        "category",
-        "price",
     ]
     for col in out_cols:
         if col not in prd.columns:
             prd[col] = None
-    prd = prd.drop_duplicates(subset=["prd_id"])
+    prd = prd.drop_duplicates(subset=["prd_key"])
     return prd[out_cols]
 
 
@@ -534,11 +467,11 @@ def build_gold_dim_location(
     Build gold_dim_location:
     - One row per customer location (CID)
     - Attributes: CID, CNTRY
-    - Standardize missing values in CNTRY
+    - Standardize missing CNTRY values
     """
     l = loc.copy()
     l["CID"] = l["CID"].astype(str)
-    l["CNTRY"] = l["CNTRY"].replace({None: "", "nan": "", "": None})
+    l["CNTRY"] = l["CNTRY"].fillna("Unknown")
     l = l.drop_duplicates(subset=["CID"])
     out_cols = ["CID", "CNTRY"]
     for col in out_cols:
@@ -549,60 +482,31 @@ def build_gold_dim_location(
 
 def build_gold_fact_sales(
     sales: pd.DataFrame,
-    sales_transactions: Optional[pd.DataFrame],
 ) -> pd.DataFrame:
     """
     Build gold_fact_sales:
-    - One row per sales order line (from sales_details)
-    - Optionally append sales_transactions (if present)
-    - Measures: sls_sales, sls_quantity, sls_price, quantity, unit_price
-    - Dimensions: sls_ord_num, sls_prd_key, sls_cust_id, sls_order_dt, sls_ship_dt, sls_due_dt, transaction_id, customer_id, product_id, transaction_date
-    - Standardize missing values in sls_sales, sls_price
+    - One row per sales order line
+    - Measures: sls_sales, sls_quantity, sls_price
+    - Dimensions: sls_ord_num, sls_prd_key, sls_cust_id, sls_order_dt, sls_ship_dt, sls_due_dt
+    - Standardize missing sls_sales and sls_price as -1
     """
     f = sales.copy()
-    # Standardize missing values
-    for col in ["sls_sales", "sls_price"]:
-        if col in f.columns:
-            f[col] = f[col].replace({None: "", "nan": "", "": None})
-    # Add columns for compatibility with sales_transactions
     for col in [
-        "transaction_id",
-        "customer_id",
-        "product_id",
-        "quantity",
-        "unit_price",
-        "transaction_date",
+        "sls_ord_num",
+        "sls_prd_key",
+        "sls_cust_id",
+        "sls_sales",
+        "sls_quantity",
+        "sls_price",
+        "sls_order_dt",
+        "sls_ship_dt",
+        "sls_due_dt",
     ]:
         if col not in f.columns:
             f[col] = None
-    # Append sales_transactions if present
-    if sales_transactions is not None:
-        st = sales_transactions.copy()
-        # Map columns to match fact sales
-        st_renamed = pd.DataFrame()
-        st_renamed["transaction_id"] = st["transaction_id"]
-        st_renamed["customer_id"] = st["customer_id"]
-        st_renamed["product_id"] = st["product_id"]
-        st_renamed["quantity"] = st["quantity"]
-        st_renamed["unit_price"] = st["unit_price"]
-        st_renamed["transaction_date"] = st["transaction_date"]
-        # Fill missing columns with None
-        for col in [
-            "sls_ord_num",
-            "sls_prd_key",
-            "sls_cust_id",
-            "sls_sales",
-            "sls_quantity",
-            "sls_price",
-            "sls_order_dt",
-            "sls_ship_dt",
-            "sls_due_dt",
-        ]:
-            st_renamed[col] = None
-        # Reorder columns to match
-        f = pd.concat([f, st_renamed[f.columns]], ignore_index=True, sort=False)
-    # Remove duplicates
-    f = f.drop_duplicates(subset=["sls_ord_num", "sls_prd_key", "transaction_id"])
+    f["sls_sales"] = f["sls_sales"].fillna(-1)
+    f["sls_price"] = f["sls_price"].fillna(-1)
+    f = f.drop_duplicates(subset=["sls_ord_num", "sls_prd_key"])
     out_cols = [
         "sls_ord_num",
         "sls_prd_key",
@@ -613,16 +517,7 @@ def build_gold_fact_sales(
         "sls_order_dt",
         "sls_ship_dt",
         "sls_due_dt",
-        "transaction_id",
-        "customer_id",
-        "product_id",
-        "quantity",
-        "unit_price",
-        "transaction_date",
     ]
-    for col in out_cols:
-        if col not in f.columns:
-            f[col] = None
     return f[out_cols]
 
 
@@ -633,20 +528,17 @@ def build_gold_agg_exec_kpis(
     """
     Build gold_agg_exec_kpis:
     - Aggregated at monthly and customer segment level
-    - Measures: total_sales, total_quantity, average_price, order_count, customer_count
-    - Dimensions: period, customer_segment
-    - Customer segments: use cst_marital_status, fallback to 'All'
+    - Measures: total_sales, total_quantity, average_price, customer_count, order_count
+    - Dimensions: period, customer_segment (marital status)
     """
     sales = fact_sales.copy()
-    # Use sls_order_dt for period
     sales = add_period_month(sales, "sls_order_dt", "period")
-    # Join customer segment
     cust = dim_customer.copy()
     cust["cst_id"] = pd.to_numeric(cust["cst_id"], errors="coerce")
     if "cst_marital_status" in cust.columns:
         cust["customer_segment"] = cust["cst_marital_status"].fillna("Unknown")
     else:
-        cust["customer_segment"] = "All"
+        cust["customer_segment"] = "Unknown"
     sales["sls_cust_id"] = pd.to_numeric(sales["sls_cust_id"], errors="coerce")
     sales = sales.merge(
         cust[["cst_id", "customer_segment"]],
@@ -654,15 +546,16 @@ def build_gold_agg_exec_kpis(
         right_on="cst_id",
         how="left",
     )
-    # Aggregate
+    def safe_div(a, b):
+        return float(a) / float(b) if b else None
     agg = (
         sales.groupby(["period", "customer_segment"], dropna=False)
         .agg(
             total_sales=("sls_sales", "sum"),
             total_quantity=("sls_quantity", "sum"),
             average_price=("sls_price", "mean"),
-            order_count=("sls_ord_num", "nunique"),
             customer_count=("sls_cust_id", "nunique"),
+            order_count=("sls_ord_num", "nunique"),
         )
         .reset_index()
     )
@@ -672,8 +565,8 @@ def build_gold_agg_exec_kpis(
         "total_sales",
         "total_quantity",
         "average_price",
-        "order_count",
         "customer_count",
+        "order_count",
     ]
     return agg[out_cols]
 
@@ -686,19 +579,19 @@ def build_gold_agg_product_performance(
     Build gold_agg_product_performance:
     - Aggregated at product and category level monthly
     - Measures: total_sales, total_quantity, average_price
-    - Dimensions: prd_id, period, prd_line, CAT, SUBCAT
+    - Dimensions: prd_key, prd_nm, CAT, SUBCAT, period
     """
     sales = fact_sales.copy()
     sales = add_period_month(sales, "sls_order_dt", "period")
     prod = dim_product.copy()
     sales = sales.merge(
-        prod[["prd_id", "prd_key", "prd_line", "CAT", "SUBCAT"]],
+        prod[["prd_key", "prd_nm", "CAT", "SUBCAT"]],
         left_on="sls_prd_key",
         right_on="prd_key",
         how="left",
     )
     agg = (
-        sales.groupby(["prd_id", "period", "prd_line", "CAT", "SUBCAT"], dropna=False)
+        sales.groupby(["prd_key", "prd_nm", "CAT", "SUBCAT", "period"], dropna=False)
         .agg(
             total_sales=("sls_sales", "sum"),
             total_quantity=("sls_quantity", "sum"),
@@ -707,11 +600,11 @@ def build_gold_agg_product_performance(
         .reset_index()
     )
     out_cols = [
-        "prd_id",
-        "period",
-        "prd_line",
+        "prd_key",
+        "prd_nm",
         "CAT",
         "SUBCAT",
+        "period",
         "total_sales",
         "total_quantity",
         "average_price",
@@ -725,16 +618,17 @@ def build_gold_agg_geo_performance(
 ) -> pd.DataFrame:
     """
     Build gold_agg_geo_performance:
-    - Aggregated at country and time period
+    - Aggregated at country and period
     - Measures: total_sales, total_quantity
     - Dimensions: CNTRY, period
     """
     sales = fact_sales.copy()
     sales = add_period_month(sales, "sls_order_dt", "period")
-    # Map sls_cust_id to CID (string)
+    # Map sls_cust_id to CID (string) for join
     sales["CID"] = sales["sls_cust_id"].astype(str)
     loc = dim_location.copy()
     loc["CID"] = loc["CID"].astype(str)
+    loc["CNTRY"] = loc["CNTRY"].fillna("Unknown")
     sales = sales.merge(
         loc[["CID", "CNTRY"]],
         on="CID",
@@ -767,18 +661,19 @@ def build_gold_wide_sales_enriched(
     Build gold_wide_sales_enriched:
     - One row per sales order line enriched with customer, product, and location attributes
     - Measures: sls_sales, sls_quantity, sls_price
-    - Dimensions: cst_id, cst_key, cst_marital_status, cst_gndr, BDATE, GEN, CNTRY, prd_id, prd_key, prd_nm, prd_line, CAT, SUBCAT
+    - Dimensions: cst_key, cst_firstname, cst_lastname, cst_marital_status, cst_gndr, BDATE, GEN, CNTRY, prd_key, prd_nm, prd_line, CAT, SUBCAT
     """
     sales = fact_sales.copy()
-    # Join customer
     cust = dim_customer.copy()
     cust["cst_id"] = pd.to_numeric(cust["cst_id"], errors="coerce")
     sales["sls_cust_id"] = pd.to_numeric(sales["sls_cust_id"], errors="coerce")
     sales = sales.merge(
         cust[
             [
-                "cst_id",
                 "cst_key",
+                "cst_id",
+                "cst_firstname",
+                "cst_lastname",
                 "cst_marital_status",
                 "cst_gndr",
                 "BDATE",
@@ -790,13 +685,11 @@ def build_gold_wide_sales_enriched(
         right_on="cst_id",
         how="left",
     )
-    # Join product
     prod = dim_product.copy()
     prod["prd_key"] = prod["prd_key"].astype(str)
     sales = sales.merge(
         prod[
             [
-                "prd_id",
                 "prd_key",
                 "prd_nm",
                 "prd_line",
@@ -808,17 +701,6 @@ def build_gold_wide_sales_enriched(
         right_on="prd_key",
         how="left",
     )
-    # Join location (if not already present)
-    if "CID" not in sales.columns and "cst_key" in sales.columns:
-        sales["CID"] = sales["cst_key"].str.replace("-", "", regex=False)
-    loc = dim_location.copy()
-    loc["CID"] = loc["CID"].astype(str)
-    sales = sales.merge(
-        loc[["CID", "CNTRY"]],
-        on="CID",
-        how="left",
-        suffixes=("", "_loc"),
-    )
     out_cols = [
         "sls_ord_num",
         "sls_prd_key",
@@ -826,14 +708,14 @@ def build_gold_wide_sales_enriched(
         "sls_sales",
         "sls_quantity",
         "sls_price",
-        "cst_id",
         "cst_key",
+        "cst_firstname",
+        "cst_lastname",
         "cst_marital_status",
         "cst_gndr",
         "BDATE",
         "GEN",
         "CNTRY",
-        "prd_id",
         "prd_key",
         "prd_nm",
         "prd_line",
@@ -909,16 +791,13 @@ def main() -> int:
         cst_info = load_csv(silver_data_dir, "cst_info.csv")
         cst_az12 = load_csv(silver_data_dir, "CST_AZ12.csv")
         loc = load_csv(silver_data_dir, "LOC_A101.csv")
-        customer_info = load_csv(silver_data_dir, "customer_info.csv")
-        product_info = load_csv(silver_data_dir, "product_info.csv")
-        sales_transactions = load_csv(silver_data_dir, "sales_transactions.csv")
 
         # 1) gold_dim_customer
         if mart_enabled("gold_dim_customer"):
             try:
                 if cst_info is None:
                     raise FileNotFoundError("cst_info.csv is required for gold_dim_customer")
-                dim_customer = build_gold_dim_customer(cst_info, cst_az12, loc, customer_info)
+                dim_customer = build_gold_dim_customer(cst_info, cst_az12, loc)
                 out = data_dir / "gold_dim_customer.csv"
                 dim_customer.to_csv(out, index=False)
                 outputs.append(
@@ -943,7 +822,7 @@ def main() -> int:
             try:
                 if prd_info is None:
                     raise FileNotFoundError("prd_info.csv is required for gold_dim_product")
-                dim_product = build_gold_dim_product(prd_info, px_cat, product_info)
+                dim_product = build_gold_dim_product(prd_info, px_cat)
                 out = data_dir / "gold_dim_product.csv"
                 dim_product.to_csv(out, index=False)
                 outputs.append(
@@ -993,7 +872,7 @@ def main() -> int:
             try:
                 if sales is None:
                     raise FileNotFoundError("sales_details.csv is required for gold_fact_sales")
-                fact_sales = build_gold_fact_sales(sales, sales_transactions)
+                fact_sales = build_gold_fact_sales(sales)
                 out = data_dir / "gold_fact_sales.csv"
                 fact_sales.to_csv(out, index=False)
                 outputs.append(
@@ -1105,7 +984,7 @@ def main() -> int:
                 errors.append(msg)
                 log(msg)
 
-        notes.append("Gold marts built based on Silver sales, product, customer, demographic, and location data, where available. Date fields converted to ISO format where appropriate. Standardized missing values in key attributes as per business logic. Aggregates and wide marts built for BI and analytics.")
+        notes.append("Gold marts built based on Silver sales, product, customer, demographic, and location data, where available. Date fields converted to ISO format where appropriate. Missing values standardized as per business rules.")
 
     except Exception as e:
         errors.append(f"UNHANDLED gold build failure: {type(e).__name__}: {e}")

@@ -1,0 +1,367 @@
+{
+  "silver_run_id": "20260124_231016_#6470e523",
+  "gold_layer_objective": "Create clean, integrated, and analytics-ready Gold-layer data marts for customer, product, location dimensions and sales facts with aggregated KPIs and enriched wide sales views to support BI and executive decision-making.",
+  "dimensions": [
+    {
+      "name": "gold_dim_customer",
+      "source_tables": [
+        "cst_info.csv",
+        "CST_AZ12.csv",
+        "customer_info.csv"
+      ],
+      "grain": "one row per customer",
+      "primary_keys": [
+        "cst_key"
+      ],
+      "attributes": [
+        "cst_firstname",
+        "cst_lastname",
+        "cst_marital_status",
+        "cst_gndr",
+        "cst_create_date",
+        "BDATE",
+        "GEN"
+      ],
+      "scd_guidance": "SCD2 for tracking changes in customer attributes over time",
+      "notes": [
+        "Use cst_key as primary key due to higher uniqueness and completeness than cst_id.",
+        "Integrate demographic info from CST_AZ12 (BDATE, GEN) after standardizing missing GEN values.",
+        "Customer_info.csv has very limited rows; consider as reference or validation only.",
+        "Standardize missing values in all customer-related attributes before loading."
+      ]
+    },
+    {
+      "name": "gold_dim_product",
+      "source_tables": [
+        "prd_info.csv",
+        "product_info.csv",
+        "PX_CAT_G1V2.csv"
+      ],
+      "grain": "one row per product",
+      "primary_keys": [
+        "prd_key"
+      ],
+      "attributes": [
+        "prd_nm",
+        "prd_cost",
+        "prd_line",
+        "prd_start_dt",
+        "prd_end_dt",
+        "category",
+        "price",
+        "CAT",
+        "SUBCAT",
+        "MAINTENANCE"
+      ],
+      "scd_guidance": "SCD2 to capture product lifecycle and category changes",
+      "notes": [
+        "Use prd_key as primary key for product dimension.",
+        "Join PX_CAT_G1V2 on category/subcategory for enriched product categorization.",
+        "Standardize missing values in prd_cost, prd_end_dt, and prd_line before loading.",
+        "product_info.csv has limited rows; use for price and category validation."
+      ]
+    },
+    {
+      "name": "gold_dim_location",
+      "source_tables": [
+        "LOC_A101.csv",
+        "CST_AZ12.csv"
+      ],
+      "grain": "one row per customer location",
+      "primary_keys": [
+        "CID"
+      ],
+      "attributes": [
+        "CNTRY",
+        "BDATE",
+        "GEN"
+      ],
+      "scd_guidance": "SCD1 as location data expected to be current snapshot",
+      "notes": [
+        "Use CID as primary key to link location to customers.",
+        "Standardize missing CNTRY values before loading.",
+        "BDATE and GEN from CST_AZ12 can be used for demographic enrichment if needed."
+      ]
+    }
+  ],
+  "facts": [
+    {
+      "name": "gold_fact_sales",
+      "source_tables": [
+        "sales_details.csv",
+        "sales_transactions.csv"
+      ],
+      "grain": "one row per sales transaction or sales detail record",
+      "primary_keys": [
+        "sls_ord_num",
+        "transaction_id"
+      ],
+      "measures": [
+        "sls_sales",
+        "sls_quantity",
+        "sls_price",
+        "quantity",
+        "unit_price"
+      ],
+      "dimensions": [
+        "gold_dim_customer",
+        "gold_dim_product",
+        "gold_dim_location"
+      ],
+      "aggregation_opportunities": [
+        "sum of sales and quantity by product, customer, location, and time",
+        "average price/unit_price per product or transaction",
+        "count of transactions/orders"
+      ],
+      "notes": [
+        "Standardize missing values in sls_sales and sls_price before loading.",
+        "sales_transactions has limited rows; use for validation or supplementing sales_details.",
+        "Join keys: sls_cust_id to cst_key or customer_id, sls_prd_key to prd_key or product_id."
+      ]
+    }
+  ],
+  "marts": [
+    {
+      "name": "gold_dim_customer",
+      "type": "dim",
+      "priority": "mandatory",
+      "source_tables": [
+        "cst_info.csv",
+        "CST_AZ12.csv"
+      ],
+      "grain": "one row per customer",
+      "primary_keys": [
+        "cst_key"
+      ],
+      "measures": [],
+      "dimensions": [],
+      "scd_guidance": "SCD2 to track historical changes in customer attributes",
+      "aggregation_opportunities": [],
+      "notes": [
+        "Integrate demographic and location attributes for enriched customer profile.",
+        "Standardize missing values in all attributes."
+      ]
+    },
+    {
+      "name": "gold_dim_product",
+      "type": "dim",
+      "priority": "mandatory",
+      "source_tables": [
+        "prd_info.csv",
+        "PX_CAT_G1V2.csv"
+      ],
+      "grain": "one row per product",
+      "primary_keys": [
+        "prd_key"
+      ],
+      "measures": [],
+      "dimensions": [],
+      "scd_guidance": "SCD2 to capture product lifecycle and category changes",
+      "aggregation_opportunities": [],
+      "notes": [
+        "Join product category and maintenance info from PX_CAT_G1V2.",
+        "Standardize missing values in cost, line, and end date."
+      ]
+    },
+    {
+      "name": "gold_dim_location",
+      "type": "dim",
+      "priority": "mandatory",
+      "source_tables": [
+        "LOC_A101.csv"
+      ],
+      "grain": "one row per customer location",
+      "primary_keys": [
+        "CID"
+      ],
+      "measures": [],
+      "dimensions": [],
+      "scd_guidance": "SCD1 as location data is current snapshot",
+      "aggregation_opportunities": [],
+      "notes": [
+        "Standardize missing country values.",
+        "Link location to customer dimension via CID."
+      ]
+    },
+    {
+      "name": "gold_fact_sales",
+      "type": "fact",
+      "priority": "mandatory",
+      "source_tables": [
+        "sales_details.csv",
+        "sales_transactions.csv"
+      ],
+      "grain": "one row per sales transaction or detail",
+      "primary_keys": [
+        "sls_ord_num",
+        "transaction_id"
+      ],
+      "measures": [
+        "sls_sales",
+        "sls_quantity",
+        "sls_price",
+        "quantity",
+        "unit_price"
+      ],
+      "dimensions": [
+        "gold_dim_customer",
+        "gold_dim_product",
+        "gold_dim_location"
+      ],
+      "scd_guidance": "",
+      "aggregation_opportunities": [
+        "sum sales and quantity by product, customer, location, and time",
+        "average price/unit_price per product or transaction"
+      ],
+      "notes": [
+        "Standardize missing sales and price values before loading.",
+        "Use sales_transactions for validation and supplementing sales_details."
+      ]
+    },
+    {
+      "name": "gold_agg_exec_kpis",
+      "type": "agg",
+      "priority": "mandatory",
+      "source_tables": [
+        "sales_details.csv"
+      ],
+      "grain": "aggregated at executive summary level by time",
+      "primary_keys": [],
+      "measures": [
+        "total_sales",
+        "total_quantity",
+        "average_price"
+      ],
+      "dimensions": [
+        "time"
+      ],
+      "scd_guidance": "",
+      "aggregation_opportunities": [
+        "sum total sales and quantity",
+        "average price"
+      ],
+      "notes": [
+        "Aggregate sales data for executive KPIs at daily, monthly, quarterly levels."
+      ]
+    },
+    {
+      "name": "gold_agg_product_performance",
+      "type": "agg",
+      "priority": "mandatory",
+      "source_tables": [
+        "sales_details.csv",
+        "prd_info.csv"
+      ],
+      "grain": "aggregated by product and time",
+      "primary_keys": [
+        "prd_key",
+        "time"
+      ],
+      "measures": [
+        "total_sales",
+        "total_quantity",
+        "average_price"
+      ],
+      "dimensions": [
+        "gold_dim_product",
+        "time"
+      ],
+      "scd_guidance": "",
+      "aggregation_opportunities": [
+        "sum sales and quantity by product",
+        "average price per product"
+      ],
+      "notes": [
+        "Use product dimension attributes for enriched analysis."
+      ]
+    },
+    {
+      "name": "gold_agg_geo_performance",
+      "type": "agg",
+      "priority": "optional",
+      "source_tables": [
+        "sales_details.csv",
+        "LOC_A101.csv"
+      ],
+      "grain": "aggregated by country and time",
+      "primary_keys": [
+        "CNTRY",
+        "time"
+      ],
+      "measures": [
+        "total_sales",
+        "total_quantity"
+      ],
+      "dimensions": [
+        "gold_dim_location",
+        "time"
+      ],
+      "scd_guidance": "",
+      "aggregation_opportunities": [
+        "sum sales and quantity by country"
+      ],
+      "notes": [
+        "Standardize missing country values before aggregation.",
+        "Useful for geographic sales performance analysis."
+      ]
+    },
+    {
+      "name": "gold_wide_sales_enriched",
+      "type": "wide",
+      "priority": "optional",
+      "source_tables": [
+        "sales_details.csv",
+        "cst_info.csv",
+        "prd_info.csv",
+        "LOC_A101.csv",
+        "PX_CAT_G1V2.csv"
+      ],
+      "grain": "one row per sales transaction enriched with customer, product, and location attributes",
+      "primary_keys": [
+        "sls_ord_num"
+      ],
+      "measures": [
+        "sls_sales",
+        "sls_quantity",
+        "sls_price"
+      ],
+      "dimensions": [
+        "gold_dim_customer",
+        "gold_dim_product",
+        "gold_dim_location"
+      ],
+      "scd_guidance": "",
+      "aggregation_opportunities": [
+        "sum sales and quantity by multiple dimensions",
+        "average price"
+      ],
+      "notes": [
+        "Join complexity and data quality risks due to missing values and key mismatches.",
+        "Consider as optional enrichment layer after core marts are stable."
+      ]
+    }
+  ],
+  "risks": [
+    "Missing values in key dimension attributes may cause join failures or inaccurate dimension keys.",
+    "Low row counts in some tables (e.g., customer_info.csv, sales_transactions.csv) limit their usefulness.",
+    "Potential key mismatches between sales and dimension tables due to different key naming and data quality.",
+    "Standardization of missing values is critical before Gold layer ingestion to avoid data quality issues.",
+    "Wide sales enriched mart may have performance and maintenance challenges due to complex joins."
+  ],
+  "assumptions": [
+    "cst_key is the preferred stable customer key for dimension and fact joins.",
+    "prd_key is the stable product key for product dimension and sales fact linkage.",
+    "Time dimension will be derived from sales order and transaction dates for aggregation.",
+    "Standardization and missing value handling will be completed in Silver layer or early Gold transformations.",
+    "Location dimension is at customer location granularity identified by CID."
+  ],
+  "next_steps": [
+    "Implement Silver layer transformations to standardize missing values as suggested.",
+    "Define and build time dimension for consistent time-based aggregations.",
+    "Develop ETL pipelines for each Gold dimension with SCD2 or SCD1 as specified.",
+    "Build Gold fact sales mart integrating sales_details and sales_transactions with dimension keys.",
+    "Create aggregation marts for executive KPIs, product, and geographic performance.",
+    "Evaluate feasibility and performance of wide sales enriched mart; consider for Phase 2.",
+    "Establish data quality monitoring for key columns and joins in Gold layer."
+  ]
+}
