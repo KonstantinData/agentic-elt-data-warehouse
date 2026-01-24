@@ -131,15 +131,39 @@ def iter_token_usage(payload: Any) -> Iterable[Dict[str, Any]]:
             yield from iter_token_usage(item)
 
 
-def aggregate_token_usage(metadatas: Iterable[Dict[str, Any]]) -> Optional[Dict[str, int]]:
-    """Aggregate numeric token usage across metadata payloads."""
-    totals: Dict[str, int] = {}
-    for metadata in metadatas:
-        for usage in iter_token_usage(metadata):
-            for key, value in usage.items():
-                if isinstance(value, (int, float)):
-                    totals[key] = totals.get(key, 0) + int(value)
-    return totals or None
+def extract_tokens_from_logs(log_dir: Path) -> Dict[str, Any]:
+    """Extract token usage from orchestrator log files."""
+    token_pattern = re.compile(r"tokens: \{'prompt_tokens': (\d+), 'completion_tokens': (\d+), 'total_tokens': (\d+)\}")
+    agent_tokens = {}
+    total_tokens = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    
+    if not log_dir.exists():
+        return {"error": "Log directory not found"}
+    
+    for log_file in log_dir.glob("*.log"):
+        agent_name = log_file.stem
+        try:
+            content = log_file.read_text(encoding="utf-8")
+            matches = token_pattern.findall(content)
+            if matches:
+                # Sum all token usage for this agent (some agents make multiple LLM calls)
+                agent_total = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+                for prompt, completion, total in matches:
+                    agent_total["prompt_tokens"] += int(prompt)
+                    agent_total["completion_tokens"] += int(completion)
+                    agent_total["total_tokens"] += int(total)
+                
+                agent_tokens[agent_name] = agent_total
+                total_tokens["prompt_tokens"] += agent_total["prompt_tokens"]
+                total_tokens["completion_tokens"] += agent_total["completion_tokens"]
+                total_tokens["total_tokens"] += agent_total["total_tokens"]
+        except Exception as exc:
+            LOGGER.warning(f"Failed to extract tokens from {log_file}: {exc}")
+    
+    return {
+        "by_agent": agent_tokens,
+        "total": total_tokens if total_tokens["total_tokens"] > 0 else None
+    }
 
 
 def safe_int(value: Any) -> int:
@@ -369,13 +393,7 @@ def build_summary_payload(
             "silver": silver_summary,
             "gold": gold_summary,
         },
-        "token_usage": aggregate_token_usage(
-            [
-                bronze_summary.get("metadata", {}),
-                silver_summary.get("metadata", {}),
-                gold_summary.get("metadata", {}),
-            ]
-        ),
+        "token_usage": extract_tokens_from_logs(repo_root / "artifacts" / "orchestrator" / run_id / "logs"),
     }
     return payload
 

@@ -15,16 +15,14 @@ and behaves as documented below.
 from __future__ import annotations
 
 import hashlib
-import json
-import logging
 import os
 import platform
 import re
 import sys
-import time
+import traceback
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 import yaml
@@ -54,6 +52,7 @@ Expected Silver tables and key columns:
     sls_ship_dt    : ship date (int, YYYYMMDD)
     sls_due_dt     : due date (int, YYYYMMDD)
 - prd_info.csv
+    prd_id         : product id (int)
     prd_key        : product key (string)
     prd_nm         : product name
     prd_cost       : product cost
@@ -79,6 +78,24 @@ Expected Silver tables and key columns:
 - LOC_A101.csv
     CID            : location/customer business id (e.g. 'AW-00011000')
     CNTRY          : country name
+- customer_info.csv
+    customer_id    : integer
+    firstname      : string
+    lastname       : string
+    gender         : string
+    date_of_birth  : datetime
+- product_info.csv
+    product_id     : integer
+    product_name   : string
+    category       : string
+    price          : float
+- sales_transactions.csv
+    transaction_id : integer
+    customer_id    : integer
+    product_id     : integer
+    quantity       : integer
+    unit_price     : float
+    transaction_date: datetime
 
 OUTPUT:
   artifacts/gold/marts/<gold_run_id>/
@@ -106,36 +123,6 @@ GOLD_MART_PLAN (injected by agent):
 """
 
 RUN_ID_RE = re.compile(r"^(?P<ts>\d{8}_\d{6})_#(?P<suffix>[0-9a-fA-F]{6,32})$")
-PIPELINE_VERSION = "1.1.0"
-MAX_IO_ATTEMPTS = 3
-IO_BACKOFF_S = 0.5
-
-REQUIRED_SCHEMAS: Dict[str, Tuple[str, ...]] = {
-    "sales_details.csv": (
-        "sls_ord_num",
-        "sls_prd_key",
-        "sls_cust_id",
-        "sls_sales",
-        "sls_quantity",
-        "sls_price",
-        "sls_order_dt",
-        "sls_ship_dt",
-        "sls_due_dt",
-    ),
-    "prd_info.csv": ("prd_key", "prd_nm", "prd_cost", "prd_line", "prd_start_dt", "prd_end_dt"),
-    "PX_CAT_G1V2.csv": ("ID", "CAT", "SUBCAT", "MAINTENANCE"),
-    "cst_info.csv": (
-        "cst_id",
-        "cst_key",
-        "cst_firstname",
-        "cst_lastname",
-        "cst_marital_status",
-        "cst_gndr",
-        "cst_create_date",
-    ),
-    "CST_AZ12.csv": ("CID", "BDATE", "GEN"),
-    "LOC_A101.csv": ("CID", "CNTRY"),
-}
 
 
 HTML_REPORT_TEMPLATE = """
@@ -211,15 +198,8 @@ def resolve_silver_root(repo_root: Path) -> Path:
       artifacts/silver/<run_id>/
     But we support legacy/fallbacks.
     """
-    override = os.environ.get("SILVER_ROOT_OVERRIDE")
-    if override:
-        candidate = Path(override).expanduser()
-        if candidate.exists() and candidate.is_dir():
-            return candidate
-        raise FileNotFoundError(f"SILVER_ROOT_OVERRIDE does not exist or is not a directory: {candidate}")
-
     candidates = [
-        repo_root / "artifacts" / "silver",  # PREFERRED
+        repo_root / "artifacts" / "silver",          # PREFERRED
         repo_root / "artifacts" / "silver" / "elt",  # legacy
         repo_root / "artifacts" / "silver" / "runs",
         repo_root / "artifacts" / "sylver" / "runs",  # legacy spelling
@@ -233,90 +213,35 @@ def resolve_silver_root(repo_root: Path) -> Path:
 
 
 SILVER_ROOT = resolve_silver_root(REPO_ROOT)
-GOLD_ROOT = Path(os.environ.get("GOLD_ROOT_OVERRIDE", str(REPO_ROOT / "artifacts" / "gold" / "marts"))).expanduser()
-
-
-def should_emit_stdout() -> bool:
-    return os.environ.get("PYTEST_CURRENT_TEST") is None
+GOLD_ROOT = REPO_ROOT / "artifacts" / "gold" / "marts"
 
 
 # -----------------------------
 # IO helpers
 # -----------------------------
-class JsonFormatter(logging.Formatter):
-    def format(self, record: logging.LogRecord) -> str:
-        payload = {
-            "timestamp": iso_utc(utc_now()),
-            "level": record.levelname,
-            "message": record.getMessage(),
-        }
-        event = getattr(record, "event", None)
-        context = getattr(record, "context", None)
-        if event:
-            payload["event"] = event
-        if context:
-            payload["context"] = context
-        if record.exc_info:
-            exc_type = record.exc_info[0].__name__ if record.exc_info[0] else "Exception"
-            payload["exception"] = {"type": exc_type, "message": str(record.exc_info[1])}
-        return json.dumps(payload, ensure_ascii=False)
-
-
-def build_logger(log_path: Path) -> logging.Logger:
-    logger = logging.getLogger(f"gold_runner_{log_path}")
-    logger.setLevel(logging.INFO)
-    logger.handlers.clear()
-    handler = logging.FileHandler(log_path, encoding="utf-8")
-    handler.setFormatter(JsonFormatter())
-    logger.addHandler(handler)
-    logger.propagate = False
-    return logger
-
-
-def log_event(logger: logging.Logger, event: str, message: str, context: Optional[Dict[str, Any]] = None) -> None:
-    logger.info(message, extra={"event": event, "context": context or {}})
-    if should_emit_stdout():
-        print(f"{iso_utc(utc_now())} | {event} | {message}")
-
-
-def with_retry(action: Callable[[], Any], *, attempts: int = MAX_IO_ATTEMPTS, backoff_s: float = IO_BACKOFF_S) -> Any:
-    for attempt in range(1, attempts + 1):
-        try:
-            return action()
-        except (OSError, IOError) as exc:
-            if attempt == attempts:
-                raise
-            time.sleep(backoff_s * attempt)
-
-
 def ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
 
 
 def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
     h = hashlib.sha256()
-    def _read() -> None:
-        with open(path, "rb") as f:
-            while True:
-                b = f.read(chunk_size)
-                if not b:
-                    break
-                h.update(b)
-
-    with_retry(_read)
+    with open(path, "rb") as f:
+        while True:
+            b = f.read(chunk_size)
+            if not b:
+                break
+            h.update(b)
     return h.hexdigest()
 
 
 def write_yaml(obj: Dict[str, Any], path: Path) -> None:
-    data = yaml.safe_dump(obj, sort_keys=False, allow_unicode=True)
-    with_retry(lambda: path.write_text(data, encoding="utf-8"))
+    path.write_text(yaml.safe_dump(obj, sort_keys=False, allow_unicode=True), encoding="utf-8")
 
 
 def write_html(report_ctx: Dict[str, Any], path: Path) -> None:
     from jinja2 import Template
 
-    rendered = Template(HTML_REPORT_TEMPLATE).render(**report_ctx)
-    with_retry(lambda: path.write_text(rendered, encoding="utf-8"))
+    path.write_text(Template(HTML_REPORT_TEMPLATE).render(**report_ctx), encoding="utf-8")
 
 
 def find_latest_run_id(root: Path) -> str:
@@ -371,47 +296,25 @@ def load_csv(folder: Path, filename: str) -> Optional[pd.DataFrame]:
     p = folder / filename
     if not p.exists():
         return None
-    return with_retry(lambda: pd.read_csv(p))
-
-
-def write_csv(df: pd.DataFrame, path: Path) -> None:
-    with_retry(lambda: df.to_csv(path, index=False))
-
-
-def format_output_path(path: Path, base: Path) -> str:
-    try:
-        return str(path.relative_to(base))
-    except ValueError:
-        return str(path)
-
-
-def validate_required_columns(
-    df: pd.DataFrame,
-    required: Sequence[str],
-    table_name: str,
-) -> List[str]:
-    missing = [col for col in required if col not in df.columns]
-    return [f"{table_name} missing columns: {missing}"] if missing else []
+    return pd.read_csv(p)
 
 
 # -----------------------------
 # GOLD_MART_PLAN handling
 # -----------------------------
-def get_mart_plan() -> Optional[Dict[str, Any]]:
-    try:
-        plan = GOLD_MART_PLAN  # type: ignore[name-defined]
-    except NameError:
-        return None
-    return plan if isinstance(plan, dict) else None
-
-
-def mart_enabled(mart_name: str, plan: Optional[Dict[str, Any]]) -> bool:
+def mart_enabled(mart_name: str) -> bool:
     """
-    Decide whether a mart should be built based on GOLD_MART_PLAN.
+    Decide whether a mart should be built based on GOLD_MART_PLAN,
+    which is injected by the agent as a global variable.
 
     If GOLD_MART_PLAN is missing or invalid, all marts are treated as enabled.
     """
-    if not plan:
+    try:
+        plan = GOLD_MART_PLAN  # type: ignore[name-defined]
+    except NameError:
+        return True
+
+    if not isinstance(plan, dict):
         return True
 
     mart_list = plan.get("mart_list")
@@ -454,14 +357,15 @@ def build_gold_dim_customer(
     cst_info: pd.DataFrame,
     cst_az12: Optional[pd.DataFrame],
     loc: Optional[pd.DataFrame],
+    customer_info: Optional[pd.DataFrame],
 ) -> pd.DataFrame:
     """
     Build gold_dim_customer:
     - One row per customer (cst_id)
-    - Merge cst_info, CST_AZ12, LOC_A101
-    - Dimensions: cst_key, cst_firstname, cst_lastname, cst_marital_status, cst_gndr, cst_create_date, CID, BDATE, GEN, CNTRY
+    - Merge cst_info, CST_AZ12, LOC_A101, customer_info
+    - Attributes: cst_id, cst_key, cst_firstname, cst_lastname, cst_marital_status, cst_gndr, cst_create_date, CID, BDATE, GEN, CNTRY, customer_info fields
+    - Standardize missing values in gender fields (GEN, cst_gndr)
     """
-    # Standardize keys
     cst = cst_info.copy()
     cst["cst_id"] = pd.to_numeric(cst["cst_id"], errors="coerce")
     cst["cst_key"] = cst["cst_key"].astype(str)
@@ -471,7 +375,7 @@ def build_gold_dim_customer(
         az["CID"] = az["CID"].astype(str)
         az["BDATE"] = pd.to_numeric(az["BDATE"], errors="coerce")
         az["GEN"] = az["GEN"].astype(str)
-        # Attempt to join on cst_key == CID (removing dashes)
+        # Join on cst_key == CID (removing dashes)
         cst["CID"] = cst["cst_key"].str.replace("-", "", regex=False)
         az["CID_norm"] = az["CID"].str.replace("-", "", regex=False)
         cst = cst.merge(
@@ -498,6 +402,30 @@ def build_gold_dim_customer(
         cst = cst.drop(columns=["CID_norm"])
     else:
         cst["CNTRY"] = None
+    # Merge customer_info (enrichment, only 5 rows)
+    if customer_info is not None:
+        ci = customer_info.copy()
+        ci["customer_id"] = pd.to_numeric(ci["customer_id"], errors="coerce")
+        ci["firstname"] = ci["firstname"].astype(str)
+        ci["lastname"] = ci["lastname"].astype(str)
+        ci["gender"] = ci["gender"].astype(str)
+        ci["date_of_birth"] = ci["date_of_birth"].astype(str)
+        # Try to join on cst_id == customer_id
+        cst = cst.merge(
+            ci[["customer_id", "firstname", "lastname", "gender", "date_of_birth"]],
+            left_on="cst_id",
+            right_on="customer_id",
+            how="left",
+            suffixes=("", "_ci"),
+        )
+    else:
+        cst["firstname"] = None
+        cst["lastname"] = None
+        cst["gender"] = None
+        cst["date_of_birth"] = None
+    # Standardize missing values in gender fields
+    cst["cst_gndr"] = cst["cst_gndr"].replace({None: "", "nan": "", "": None})
+    cst["GEN"] = cst["GEN"].replace({None: "", "nan": "", "": None})
     # Select columns
     out_cols = [
         "cst_id",
@@ -511,12 +439,14 @@ def build_gold_dim_customer(
         "BDATE",
         "GEN",
         "CNTRY",
+        "firstname",
+        "lastname",
+        "gender",
+        "date_of_birth",
     ]
-    # Ensure all columns exist
     for col in out_cols:
         if col not in cst.columns:
             cst[col] = None
-    # Remove duplicates
     cst = cst.drop_duplicates(subset=["cst_id"])
     return cst[out_cols]
 
@@ -524,22 +454,22 @@ def build_gold_dim_customer(
 def build_gold_dim_product(
     prd_info: pd.DataFrame,
     px_cat: Optional[pd.DataFrame],
+    product_info: Optional[pd.DataFrame],
 ) -> pd.DataFrame:
     """
     Build gold_dim_product:
-    - One row per product (prd_key)
-    - Merge prd_info, PX_CAT_G1V2
-    - Dimensions: prd_key, prd_nm, prd_line, prd_start_dt, prd_end_dt, ID, CAT, SUBCAT, MAINTENANCE
-    - Measures: prd_cost
+    - One row per product (prd_id)
+    - Merge prd_info, PX_CAT_G1V2, product_info
+    - Attributes: prd_id, prd_key, prd_nm, prd_cost, prd_line, prd_start_dt, prd_end_dt, ID, CAT, SUBCAT, MAINTENANCE, product_name, category, price
+    - Standardize missing values in prd_cost, prd_end_dt, prd_line
     """
     prd = prd_info.copy()
+    prd["prd_id"] = pd.to_numeric(prd["prd_id"], errors="coerce")
     prd["prd_key"] = prd["prd_key"].astype(str)
-    prd["prd_id"] = prd["prd_key"]  # Alias for clarity
     # Merge PX_CAT_G1V2
     if px_cat is not None:
         px = px_cat.copy()
         px["ID"] = px["ID"].astype(str)
-        # Try to join on prd_key == ID (if possible)
         prd = prd.merge(
             px[["ID", "CAT", "SUBCAT", "MAINTENANCE"]],
             left_on="prd_key",
@@ -551,7 +481,29 @@ def build_gold_dim_product(
         prd["CAT"] = None
         prd["SUBCAT"] = None
         prd["MAINTENANCE"] = None
-    # Select columns
+    # Merge product_info (enrichment, only 4 rows)
+    if product_info is not None:
+        pi = product_info.copy()
+        pi["product_id"] = pd.to_numeric(pi["product_id"], errors="coerce")
+        pi["product_name"] = pi["product_name"].astype(str)
+        pi["category"] = pi["category"].astype(str)
+        pi["price"] = pd.to_numeric(pi["price"], errors="coerce")
+        # Try to join on prd_id == product_id
+        prd = prd.merge(
+            pi[["product_id", "product_name", "category", "price"]],
+            left_on="prd_id",
+            right_on="product_id",
+            how="left",
+            suffixes=("", "_pi"),
+        )
+    else:
+        prd["product_name"] = None
+        prd["category"] = None
+        prd["price"] = None
+    # Standardize missing values
+    for col in ["prd_cost", "prd_end_dt", "prd_line"]:
+        if col in prd.columns:
+            prd[col] = prd[col].replace({None: "", "nan": "", "": None})
     out_cols = [
         "prd_id",
         "prd_key",
@@ -564,6 +516,9 @@ def build_gold_dim_product(
         "CAT",
         "SUBCAT",
         "MAINTENANCE",
+        "product_name",
+        "category",
+        "price",
     ]
     for col in out_cols:
         if col not in prd.columns:
@@ -578,10 +533,12 @@ def build_gold_dim_location(
     """
     Build gold_dim_location:
     - One row per customer location (CID)
-    - Dimensions: CID, CNTRY
+    - Attributes: CID, CNTRY
+    - Standardize missing values in CNTRY
     """
     l = loc.copy()
     l["CID"] = l["CID"].astype(str)
+    l["CNTRY"] = l["CNTRY"].replace({None: "", "nan": "", "": None})
     l = l.drop_duplicates(subset=["CID"])
     out_cols = ["CID", "CNTRY"]
     for col in out_cols:
@@ -592,30 +549,60 @@ def build_gold_dim_location(
 
 def build_gold_fact_sales(
     sales: pd.DataFrame,
+    sales_transactions: Optional[pd.DataFrame],
 ) -> pd.DataFrame:
     """
     Build gold_fact_sales:
-    - One row per sales order line
-    - Measures: sls_sales, sls_quantity, sls_price
-    - Dimensions: sls_prd_key, sls_cust_id, sls_order_dt, sls_ship_dt, sls_due_dt
+    - One row per sales order line (from sales_details)
+    - Optionally append sales_transactions (if present)
+    - Measures: sls_sales, sls_quantity, sls_price, quantity, unit_price
+    - Dimensions: sls_ord_num, sls_prd_key, sls_cust_id, sls_order_dt, sls_ship_dt, sls_due_dt, transaction_id, customer_id, product_id, transaction_date
+    - Standardize missing values in sls_sales, sls_price
     """
     f = sales.copy()
-    # Ensure columns exist
+    # Standardize missing values
+    for col in ["sls_sales", "sls_price"]:
+        if col in f.columns:
+            f[col] = f[col].replace({None: "", "nan": "", "": None})
+    # Add columns for compatibility with sales_transactions
     for col in [
-        "sls_ord_num",
-        "sls_prd_key",
-        "sls_cust_id",
-        "sls_sales",
-        "sls_quantity",
-        "sls_price",
-        "sls_order_dt",
-        "sls_ship_dt",
-        "sls_due_dt",
+        "transaction_id",
+        "customer_id",
+        "product_id",
+        "quantity",
+        "unit_price",
+        "transaction_date",
     ]:
         if col not in f.columns:
             f[col] = None
+    # Append sales_transactions if present
+    if sales_transactions is not None:
+        st = sales_transactions.copy()
+        # Map columns to match fact sales
+        st_renamed = pd.DataFrame()
+        st_renamed["transaction_id"] = st["transaction_id"]
+        st_renamed["customer_id"] = st["customer_id"]
+        st_renamed["product_id"] = st["product_id"]
+        st_renamed["quantity"] = st["quantity"]
+        st_renamed["unit_price"] = st["unit_price"]
+        st_renamed["transaction_date"] = st["transaction_date"]
+        # Fill missing columns with None
+        for col in [
+            "sls_ord_num",
+            "sls_prd_key",
+            "sls_cust_id",
+            "sls_sales",
+            "sls_quantity",
+            "sls_price",
+            "sls_order_dt",
+            "sls_ship_dt",
+            "sls_due_dt",
+        ]:
+            st_renamed[col] = None
+        # Reorder columns to match
+        f = pd.concat([f, st_renamed[f.columns]], ignore_index=True, sort=False)
     # Remove duplicates
-    f = f.drop_duplicates(subset=["sls_ord_num", "sls_prd_key"])
+    f = f.drop_duplicates(subset=["sls_ord_num", "sls_prd_key", "transaction_id"])
     out_cols = [
         "sls_ord_num",
         "sls_prd_key",
@@ -626,7 +613,16 @@ def build_gold_fact_sales(
         "sls_order_dt",
         "sls_ship_dt",
         "sls_due_dt",
+        "transaction_id",
+        "customer_id",
+        "product_id",
+        "quantity",
+        "unit_price",
+        "transaction_date",
     ]
+    for col in out_cols:
+        if col not in f.columns:
+            f[col] = None
     return f[out_cols]
 
 
@@ -637,18 +633,16 @@ def build_gold_agg_exec_kpis(
     """
     Build gold_agg_exec_kpis:
     - Aggregated at monthly and customer segment level
-    - Measures: Conversion Rate, Customer Lifetime Value, Return Rate, Average Order Value, Customer Retention Rate
+    - Measures: total_sales, total_quantity, average_price, order_count, customer_count
     - Dimensions: period, customer_segment
-    - Customer segments: use cst_marital_status, cst_gndr, GEN, or create 'All'
-    - Return Rate: not available, set as None
+    - Customer segments: use cst_marital_status, fallback to 'All'
     """
-    # Prepare sales with period
     sales = fact_sales.copy()
+    # Use sls_order_dt for period
     sales = add_period_month(sales, "sls_order_dt", "period")
     # Join customer segment
     cust = dim_customer.copy()
     cust["cst_id"] = pd.to_numeric(cust["cst_id"], errors="coerce")
-    # For demo, segment by cst_marital_status; fallback to 'All'
     if "cst_marital_status" in cust.columns:
         cust["customer_segment"] = cust["cst_marital_status"].fillna("Unknown")
     else:
@@ -660,38 +654,26 @@ def build_gold_agg_exec_kpis(
         right_on="cst_id",
         how="left",
     )
-    # Compute KPIs
-    def safe_div(a, b):
-        return float(a) / float(b) if b else None
-
+    # Aggregate
     agg = (
         sales.groupby(["period", "customer_segment"], dropna=False)
         .agg(
             total_sales=("sls_sales", "sum"),
+            total_quantity=("sls_quantity", "sum"),
+            average_price=("sls_price", "mean"),
             order_count=("sls_ord_num", "nunique"),
             customer_count=("sls_cust_id", "nunique"),
         )
         .reset_index()
     )
-    # Conversion Rate: not computable (no funnel data), set None
-    agg["Conversion Rate"] = None
-    # Customer Lifetime Value: total_sales / customer_count
-    agg["Customer Lifetime Value"] = agg.apply(lambda r: safe_div(r["total_sales"], r["customer_count"]), axis=1)
-    # Return Rate: not available, set None
-    agg["Return Rate"] = None
-    # Average Order Value: total_sales / order_count
-    agg["Average Order Value"] = agg.apply(lambda r: safe_div(r["total_sales"], r["order_count"]), axis=1)
-    # Customer Retention Rate: not computable (needs time window), set None
-    agg["Customer Retention Rate"] = None
-    # Select columns
     out_cols = [
         "period",
         "customer_segment",
-        "Conversion Rate",
-        "Customer Lifetime Value",
-        "Return Rate",
-        "Average Order Value",
-        "Customer Retention Rate",
+        "total_sales",
+        "total_quantity",
+        "average_price",
+        "order_count",
+        "customer_count",
     ]
     return agg[out_cols]
 
@@ -703,38 +685,36 @@ def build_gold_agg_product_performance(
     """
     Build gold_agg_product_performance:
     - Aggregated at product and category level monthly
-    - Measures: Total Sales, Total Quantity Sold, Return Rate (not available)
+    - Measures: total_sales, total_quantity, average_price
     - Dimensions: prd_id, period, prd_line, CAT, SUBCAT
     """
     sales = fact_sales.copy()
     sales = add_period_month(sales, "sls_order_dt", "period")
     prod = dim_product.copy()
-    # Join product attributes
     sales = sales.merge(
         prod[["prd_id", "prd_key", "prd_line", "CAT", "SUBCAT"]],
         left_on="sls_prd_key",
         right_on="prd_key",
         how="left",
     )
-    # Aggregate
     agg = (
         sales.groupby(["prd_id", "period", "prd_line", "CAT", "SUBCAT"], dropna=False)
         .agg(
-            Total_Sales=("sls_sales", "sum"),
-            Total_Quantity_Sold=("sls_quantity", "sum"),
+            total_sales=("sls_sales", "sum"),
+            total_quantity=("sls_quantity", "sum"),
+            average_price=("sls_price", "mean"),
         )
         .reset_index()
     )
-    agg["Return Rate"] = None  # No returns data
     out_cols = [
         "prd_id",
         "period",
         "prd_line",
         "CAT",
         "SUBCAT",
-        "Total_Sales",
-        "Total_Quantity_Sold",
-        "Return Rate",
+        "total_sales",
+        "total_quantity",
+        "average_price",
     ]
     return agg[out_cols]
 
@@ -742,22 +722,17 @@ def build_gold_agg_product_performance(
 def build_gold_agg_geo_performance(
     fact_sales: pd.DataFrame,
     dim_location: pd.DataFrame,
-    dim_product: pd.DataFrame,
 ) -> pd.DataFrame:
     """
     Build gold_agg_geo_performance:
-    - Aggregated at country and product category level monthly
-    - Measures: Total Sales, Total Quantity Sold
-    - Dimensions: CNTRY, CAT, period
+    - Aggregated at country and time period
+    - Measures: total_sales, total_quantity
+    - Dimensions: CNTRY, period
     """
     sales = fact_sales.copy()
     sales = add_period_month(sales, "sls_order_dt", "period")
-    # Join location
-    # Need to map sls_cust_id -> CID -> CNTRY
-    # Assume sls_cust_id can be mapped via cst_info/cst_key/CID, but here, use sls_cust_id as string for join
-    # For demo, assume sales has 'CID' (if not, skip location join)
-    if "CID" not in sales.columns and "sls_cust_id" in sales.columns:
-        sales["CID"] = sales["sls_cust_id"].astype(str)
+    # Map sls_cust_id to CID (string)
+    sales["CID"] = sales["sls_cust_id"].astype(str)
     loc = dim_location.copy()
     loc["CID"] = loc["CID"].astype(str)
     sales = sales.merge(
@@ -765,30 +740,19 @@ def build_gold_agg_geo_performance(
         on="CID",
         how="left",
     )
-    # Join product category
-    prod = dim_product.copy()
-    prod["prd_key"] = prod["prd_key"].astype(str)
-    sales = sales.merge(
-        prod[["prd_key", "CAT"]],
-        left_on="sls_prd_key",
-        right_on="prd_key",
-        how="left",
-    )
-    # Aggregate
     agg = (
-        sales.groupby(["CNTRY", "CAT", "period"], dropna=False)
+        sales.groupby(["CNTRY", "period"], dropna=False)
         .agg(
-            Total_Sales=("sls_sales", "sum"),
-            Total_Quantity_Sold=("sls_quantity", "sum"),
+            total_sales=("sls_sales", "sum"),
+            total_quantity=("sls_quantity", "sum"),
         )
         .reset_index()
     )
     out_cols = [
         "CNTRY",
-        "CAT",
         "period",
-        "Total_Sales",
-        "Total_Quantity_Sold",
+        "total_sales",
+        "total_quantity",
     ]
     return agg[out_cols]
 
@@ -855,7 +819,6 @@ def build_gold_wide_sales_enriched(
         how="left",
         suffixes=("", "_loc"),
     )
-    # Select columns
     out_cols = [
         "sls_ord_num",
         "sls_prd_key",
@@ -891,7 +854,6 @@ def main() -> int:
     silver_data_dir = resolve_silver_data_dir(silver_run_id)
 
     start_dt = utc_now()
-    perf_start = time.perf_counter()
     requested_run_id = None
     if len(sys.argv) > 2:
         requested_run_id = sys.argv[2]
@@ -916,8 +878,14 @@ def main() -> int:
     ensure_dir(reports_dir)
 
     run_log_path = gold_dir / "run_log.txt"
-    logger = build_logger(run_log_path)
-    mart_plan = get_mart_plan()
+
+    def log(msg: str) -> None:
+        line = f"{iso_utc(utc_now())} | {msg}"
+        print(line)
+        if run_log_path.exists():
+            run_log_path.write_text(run_log_path.read_text(encoding="utf-8") + line + "\n", encoding="utf-8")
+        else:
+            run_log_path.write_text(line + "\n", encoding="utf-8")
 
     outputs: List[Dict[str, Any]] = []
     errors: List[str] = []
@@ -925,16 +893,13 @@ def main() -> int:
     if requested_run_id and not RUN_ID_RE.match(requested_run_id):
         notes.append(f"Requested run_id '{requested_run_id}' did not match expected format; generated run_id used instead.")
 
-    log_event(logger, "RUN_START", "Gold run started", {"silver_run_id": silver_run_id})
-    log_event(logger, "RUN_METADATA", "Gold run identifiers resolved", {"gold_run_id": gold_run_id, "run_id_source": run_id_source})
-    log_event(
-        logger,
-        "RUN_PATHS",
-        "Resolved IO paths",
-        {"repo_root": str(REPO_ROOT), "silver_data_dir": str(silver_data_dir), "gold_dir": str(gold_dir)},
-    )
-    if mart_plan:
-        log_event(logger, "MART_PLAN", "Loaded mart plan configuration", {"marts": mart_plan.get("mart_list", [])})
+    log("RUN_START")
+    log(f"silver_run_id={silver_run_id}")
+    log(f"gold_run_id={gold_run_id}")
+    log(f"gold_run_id_source={run_id_source}")
+    log(f"REPO_ROOT={REPO_ROOT}")
+    log(f"SILVER_DATA_DIR={silver_data_dir}")
+    log(f"GOLD_DIR={gold_dir}")
 
     try:
         # Load all required silver tables
@@ -944,292 +909,216 @@ def main() -> int:
         cst_info = load_csv(silver_data_dir, "cst_info.csv")
         cst_az12 = load_csv(silver_data_dir, "CST_AZ12.csv")
         loc = load_csv(silver_data_dir, "LOC_A101.csv")
-
-        for name, df in [
-            ("sales_details.csv", sales),
-            ("prd_info.csv", prd_info),
-            ("PX_CAT_G1V2.csv", px_cat),
-            ("cst_info.csv", cst_info),
-            ("CST_AZ12.csv", cst_az12),
-            ("LOC_A101.csv", loc),
-        ]:
-            if df is None:
-                continue
-            required = REQUIRED_SCHEMAS.get(name)
-            if required:
-                schema_errors = validate_required_columns(df, required, name)
-                if schema_errors:
-                    raise ValueError("; ".join(schema_errors))
+        customer_info = load_csv(silver_data_dir, "customer_info.csv")
+        product_info = load_csv(silver_data_dir, "product_info.csv")
+        sales_transactions = load_csv(silver_data_dir, "sales_transactions.csv")
 
         # 1) gold_dim_customer
-        if mart_enabled("gold_dim_customer", mart_plan):
+        if mart_enabled("gold_dim_customer"):
             try:
                 if cst_info is None:
                     raise FileNotFoundError("cst_info.csv is required for gold_dim_customer")
-                if REQUIRED_SCHEMAS.get("cst_info.csv"):
-                    schema_errors = validate_required_columns(cst_info, REQUIRED_SCHEMAS["cst_info.csv"], "cst_info.csv")
-                    if schema_errors:
-                        raise ValueError("; ".join(schema_errors))
-                dim_customer = build_gold_dim_customer(cst_info, cst_az12, loc)
+                dim_customer = build_gold_dim_customer(cst_info, cst_az12, loc, customer_info)
                 out = data_dir / "gold_dim_customer.csv"
-                mart_start = time.perf_counter()
-                write_csv(dim_customer, out)
-                duration = time.perf_counter() - mart_start
+                dim_customer.to_csv(out, index=False)
                 outputs.append(
                     {
                         "name": "gold_dim_customer",
-                        "path": format_output_path(out, REPO_ROOT),
+                        "path": str(out.relative_to(REPO_ROOT)),
                         "rows": int(len(dim_customer)),
                         "schema": list(dim_customer.columns),
                         "sha256": sha256_file(out),
-                        "duration_s": duration,
                     }
                 )
-                log_event(logger, "MART_BUILT", "Built gold_dim_customer", {"rows": len(dim_customer), "duration_s": duration})
+                log(f"CREATED gold_dim_customer rows={len(dim_customer)}")
             except Exception as e:
-                msg = f"Failed gold_dim_customer: {type(e).__name__}: {e}"
+                msg = f"Failed gold_dim_customer: {e}"
                 errors.append(msg)
-                logger.exception(msg, extra={"event": "MART_FAILURE", "context": {"mart": "gold_dim_customer"}})
+                log(msg)
         else:
             dim_customer = None
 
         # 2) gold_dim_product
-        if mart_enabled("gold_dim_product", mart_plan):
+        if mart_enabled("gold_dim_product"):
             try:
                 if prd_info is None:
                     raise FileNotFoundError("prd_info.csv is required for gold_dim_product")
-                if REQUIRED_SCHEMAS.get("prd_info.csv"):
-                    schema_errors = validate_required_columns(prd_info, REQUIRED_SCHEMAS["prd_info.csv"], "prd_info.csv")
-                    if schema_errors:
-                        raise ValueError("; ".join(schema_errors))
-                dim_product = build_gold_dim_product(prd_info, px_cat)
+                dim_product = build_gold_dim_product(prd_info, px_cat, product_info)
                 out = data_dir / "gold_dim_product.csv"
-                mart_start = time.perf_counter()
-                write_csv(dim_product, out)
-                duration = time.perf_counter() - mart_start
+                dim_product.to_csv(out, index=False)
                 outputs.append(
                     {
                         "name": "gold_dim_product",
-                        "path": format_output_path(out, REPO_ROOT),
+                        "path": str(out.relative_to(REPO_ROOT)),
                         "rows": int(len(dim_product)),
                         "schema": list(dim_product.columns),
                         "sha256": sha256_file(out),
-                        "duration_s": duration,
                     }
                 )
-                log_event(logger, "MART_BUILT", "Built gold_dim_product", {"rows": len(dim_product), "duration_s": duration})
+                log(f"CREATED gold_dim_product rows={len(dim_product)}")
             except Exception as e:
-                msg = f"Failed gold_dim_product: {type(e).__name__}: {e}"
+                msg = f"Failed gold_dim_product: {e}"
                 errors.append(msg)
-                logger.exception(msg, extra={"event": "MART_FAILURE", "context": {"mart": "gold_dim_product"}})
+                log(msg)
         else:
             dim_product = None
 
         # 3) gold_dim_location
-        if mart_enabled("gold_dim_location", mart_plan):
+        if mart_enabled("gold_dim_location"):
             try:
                 if loc is None:
                     raise FileNotFoundError("LOC_A101.csv is required for gold_dim_location")
-                if REQUIRED_SCHEMAS.get("LOC_A101.csv"):
-                    schema_errors = validate_required_columns(loc, REQUIRED_SCHEMAS["LOC_A101.csv"], "LOC_A101.csv")
-                    if schema_errors:
-                        raise ValueError("; ".join(schema_errors))
                 dim_location = build_gold_dim_location(loc)
                 out = data_dir / "gold_dim_location.csv"
-                mart_start = time.perf_counter()
-                write_csv(dim_location, out)
-                duration = time.perf_counter() - mart_start
+                dim_location.to_csv(out, index=False)
                 outputs.append(
                     {
                         "name": "gold_dim_location",
-                        "path": format_output_path(out, REPO_ROOT),
+                        "path": str(out.relative_to(REPO_ROOT)),
                         "rows": int(len(dim_location)),
                         "schema": list(dim_location.columns),
                         "sha256": sha256_file(out),
-                        "duration_s": duration,
                     }
                 )
-                log_event(logger, "MART_BUILT", "Built gold_dim_location", {"rows": len(dim_location), "duration_s": duration})
+                log(f"CREATED gold_dim_location rows={len(dim_location)}")
             except Exception as e:
-                msg = f"Failed gold_dim_location: {type(e).__name__}: {e}"
+                msg = f"Failed gold_dim_location: {e}"
                 errors.append(msg)
-                logger.exception(msg, extra={"event": "MART_FAILURE", "context": {"mart": "gold_dim_location"}})
+                log(msg)
         else:
             dim_location = None
 
         # 4) gold_fact_sales
-        if mart_enabled("gold_fact_sales", mart_plan):
+        if mart_enabled("gold_fact_sales"):
             try:
                 if sales is None:
                     raise FileNotFoundError("sales_details.csv is required for gold_fact_sales")
-                if REQUIRED_SCHEMAS.get("sales_details.csv"):
-                    schema_errors = validate_required_columns(
-                        sales,
-                        REQUIRED_SCHEMAS["sales_details.csv"],
-                        "sales_details.csv",
-                    )
-                    if schema_errors:
-                        raise ValueError("; ".join(schema_errors))
-                fact_sales = build_gold_fact_sales(sales)
+                fact_sales = build_gold_fact_sales(sales, sales_transactions)
                 out = data_dir / "gold_fact_sales.csv"
-                mart_start = time.perf_counter()
-                write_csv(fact_sales, out)
-                duration = time.perf_counter() - mart_start
+                fact_sales.to_csv(out, index=False)
                 outputs.append(
                     {
                         "name": "gold_fact_sales",
-                        "path": format_output_path(out, REPO_ROOT),
+                        "path": str(out.relative_to(REPO_ROOT)),
                         "rows": int(len(fact_sales)),
                         "schema": list(fact_sales.columns),
                         "sha256": sha256_file(out),
-                        "duration_s": duration,
                     }
                 )
-                log_event(logger, "MART_BUILT", "Built gold_fact_sales", {"rows": len(fact_sales), "duration_s": duration})
+                log(f"CREATED gold_fact_sales rows={len(fact_sales)}")
             except Exception as e:
-                msg = f"Failed gold_fact_sales: {type(e).__name__}: {e}"
+                msg = f"Failed gold_fact_sales: {e}"
                 errors.append(msg)
-                logger.exception(msg, extra={"event": "MART_FAILURE", "context": {"mart": "gold_fact_sales"}})
+                log(msg)
         else:
             fact_sales = None
 
         # 5) gold_agg_exec_kpis
-        if mart_enabled("gold_agg_exec_kpis", mart_plan):
+        if mart_enabled("gold_agg_exec_kpis"):
             try:
                 if fact_sales is None or dim_customer is None:
                     raise FileNotFoundError("gold_fact_sales and gold_dim_customer are required for gold_agg_exec_kpis")
                 agg_exec_kpis = build_gold_agg_exec_kpis(fact_sales, dim_customer)
                 out = data_dir / "gold_agg_exec_kpis.csv"
-                mart_start = time.perf_counter()
-                write_csv(agg_exec_kpis, out)
-                duration = time.perf_counter() - mart_start
+                agg_exec_kpis.to_csv(out, index=False)
                 outputs.append(
                     {
                         "name": "gold_agg_exec_kpis",
-                        "path": format_output_path(out, REPO_ROOT),
+                        "path": str(out.relative_to(REPO_ROOT)),
                         "rows": int(len(agg_exec_kpis)),
                         "schema": list(agg_exec_kpis.columns),
                         "sha256": sha256_file(out),
-                        "duration_s": duration,
                     }
                 )
-                log_event(logger, "MART_BUILT", "Built gold_agg_exec_kpis", {"rows": len(agg_exec_kpis), "duration_s": duration})
+                log(f"CREATED gold_agg_exec_kpis rows={len(agg_exec_kpis)}")
             except Exception as e:
-                msg = f"Failed gold_agg_exec_kpis: {type(e).__name__}: {e}"
+                msg = f"Failed gold_agg_exec_kpis: {e}"
                 errors.append(msg)
-                logger.exception(msg, extra={"event": "MART_FAILURE", "context": {"mart": "gold_agg_exec_kpis"}})
+                log(msg)
 
         # 6) gold_agg_product_performance
-        if mart_enabled("gold_agg_product_performance", mart_plan):
+        if mart_enabled("gold_agg_product_performance"):
             try:
                 if fact_sales is None or dim_product is None:
                     raise FileNotFoundError("gold_fact_sales and gold_dim_product are required for gold_agg_product_performance")
                 agg_prod_perf = build_gold_agg_product_performance(fact_sales, dim_product)
                 out = data_dir / "gold_agg_product_performance.csv"
-                mart_start = time.perf_counter()
-                write_csv(agg_prod_perf, out)
-                duration = time.perf_counter() - mart_start
+                agg_prod_perf.to_csv(out, index=False)
                 outputs.append(
                     {
                         "name": "gold_agg_product_performance",
-                        "path": format_output_path(out, REPO_ROOT),
+                        "path": str(out.relative_to(REPO_ROOT)),
                         "rows": int(len(agg_prod_perf)),
                         "schema": list(agg_prod_perf.columns),
                         "sha256": sha256_file(out),
-                        "duration_s": duration,
                     }
                 )
-                log_event(
-                    logger,
-                    "MART_BUILT",
-                    "Built gold_agg_product_performance",
-                    {"rows": len(agg_prod_perf), "duration_s": duration},
-                )
+                log(f"CREATED gold_agg_product_performance rows={len(agg_prod_perf)}")
             except Exception as e:
-                msg = f"Failed gold_agg_product_performance: {type(e).__name__}: {e}"
+                msg = f"Failed gold_agg_product_performance: {e}"
                 errors.append(msg)
-                logger.exception(msg, extra={"event": "MART_FAILURE", "context": {"mart": "gold_agg_product_performance"}})
+                log(msg)
 
         # 7) gold_agg_geo_performance
-        if mart_enabled("gold_agg_geo_performance", mart_plan):
+        if mart_enabled("gold_agg_geo_performance"):
             try:
-                if fact_sales is None or dim_location is None or dim_product is None:
-                    raise FileNotFoundError("gold_fact_sales, gold_dim_location, and gold_dim_product are required for gold_agg_geo_performance")
-                agg_geo_perf = build_gold_agg_geo_performance(fact_sales, dim_location, dim_product)
+                if fact_sales is None or dim_location is None:
+                    raise FileNotFoundError("gold_fact_sales and gold_dim_location are required for gold_agg_geo_performance")
+                agg_geo_perf = build_gold_agg_geo_performance(fact_sales, dim_location)
                 out = data_dir / "gold_agg_geo_performance.csv"
-                mart_start = time.perf_counter()
-                write_csv(agg_geo_perf, out)
-                duration = time.perf_counter() - mart_start
+                agg_geo_perf.to_csv(out, index=False)
                 outputs.append(
                     {
                         "name": "gold_agg_geo_performance",
-                        "path": format_output_path(out, REPO_ROOT),
+                        "path": str(out.relative_to(REPO_ROOT)),
                         "rows": int(len(agg_geo_perf)),
                         "schema": list(agg_geo_perf.columns),
                         "sha256": sha256_file(out),
-                        "duration_s": duration,
                     }
                 )
-                log_event(
-                    logger,
-                    "MART_BUILT",
-                    "Built gold_agg_geo_performance",
-                    {"rows": len(agg_geo_perf), "duration_s": duration},
-                )
+                log(f"CREATED gold_agg_geo_performance rows={len(agg_geo_perf)}")
             except Exception as e:
-                msg = f"Failed gold_agg_geo_performance: {type(e).__name__}: {e}"
+                msg = f"Failed gold_agg_geo_performance: {e}"
                 errors.append(msg)
-                logger.exception(msg, extra={"event": "MART_FAILURE", "context": {"mart": "gold_agg_geo_performance"}})
+                log(msg)
 
         # 8) gold_wide_sales_enriched
-        if mart_enabled("gold_wide_sales_enriched", mart_plan):
+        if mart_enabled("gold_wide_sales_enriched"):
             try:
                 if fact_sales is None or dim_customer is None or dim_product is None or dim_location is None:
                     raise FileNotFoundError("gold_fact_sales, gold_dim_customer, gold_dim_product, and gold_dim_location are required for gold_wide_sales_enriched")
                 wide_sales = build_gold_wide_sales_enriched(fact_sales, dim_customer, dim_product, dim_location)
                 out = data_dir / "gold_wide_sales_enriched.csv"
-                mart_start = time.perf_counter()
-                write_csv(wide_sales, out)
-                duration = time.perf_counter() - mart_start
+                wide_sales.to_csv(out, index=False)
                 outputs.append(
                     {
                         "name": "gold_wide_sales_enriched",
-                        "path": format_output_path(out, REPO_ROOT),
+                        "path": str(out.relative_to(REPO_ROOT)),
                         "rows": int(len(wide_sales)),
                         "schema": list(wide_sales.columns),
                         "sha256": sha256_file(out),
-                        "duration_s": duration,
                     }
                 )
-                log_event(
-                    logger,
-                    "MART_BUILT",
-                    "Built gold_wide_sales_enriched",
-                    {"rows": len(wide_sales), "duration_s": duration},
-                )
+                log(f"CREATED gold_wide_sales_enriched rows={len(wide_sales)}")
             except Exception as e:
-                msg = f"Failed gold_wide_sales_enriched: {type(e).__name__}: {e}"
+                msg = f"Failed gold_wide_sales_enriched: {e}"
                 errors.append(msg)
-                logger.exception(msg, extra={"event": "MART_FAILURE", "context": {"mart": "gold_wide_sales_enriched"}})
+                log(msg)
 
-        notes.append("Gold marts built based on Silver sales, product, customer, demographic, and location data, where available. Date fields converted to ISO format where appropriate. Return Rate KPIs set to None due to lack of returns data.")
+        notes.append("Gold marts built based on Silver sales, product, customer, demographic, and location data, where available. Date fields converted to ISO format where appropriate. Standardized missing values in key attributes as per business logic. Aggregates and wide marts built for BI and analytics.")
 
     except Exception as e:
         errors.append(f"UNHANDLED gold build failure: {type(e).__name__}: {e}")
-        logger.exception(
-            "UNHANDLED_EXCEPTION",
-            extra={"event": "UNHANDLED_EXCEPTION", "context": {"error_type": type(e).__name__}},
-        )
+        log("UNHANDLED_EXCEPTION")
+        log(traceback.format_exc())
 
     end_dt = utc_now()
-    total_duration = time.perf_counter() - perf_start
     status = "success" if not errors else "partial"
 
     meta: Dict[str, Any] = {
         "run": {
             "layer": "gold",
             "pipeline": "load_3_gold_layer",
-            "pipeline_version": PIPELINE_VERSION,
             "run_id": gold_run_id,
             "started_utc": iso_utc(start_dt),
             "ended_utc": iso_utc(end_dt),
@@ -1245,11 +1134,6 @@ def main() -> int:
             "silver_run_id": silver_run_id,
             "silver_data_dir": str(silver_data_dir),
             "suffix": suffix,
-        },
-        "metrics": {
-            "outputs_count": len(outputs),
-            "errors_count": len(errors),
-            "duration_s": total_duration,
         },
         "outputs": outputs,
         "errors": errors,
@@ -1272,12 +1156,8 @@ def main() -> int:
         reports_dir / "gold_report.html",
     )
 
-    log_event(
-        logger,
-        "RUN_END",
-        "Gold run completed",
-        {"duration_s": total_duration, "status": status, "output_dir": str(gold_dir)},
-    )
+    log(f"RUN_END duration_s={(end_dt - start_dt).total_seconds():.3f} status={status}")
+    log(f"OUTPUT={gold_dir}")
 
     return 0 if status == "success" else 2
 

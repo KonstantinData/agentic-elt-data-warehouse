@@ -389,7 +389,7 @@ def create_gold_design_report(
     model_name: str,
     max_retries: int,
     backoff_seconds: float,
-) -> str:
+) -> tuple[str, Dict[str, int]]:
     """
     Ask the LLM to produce a human-readable Gold-layer design report
     in Markdown format, based on the Silver context and metadata.
@@ -436,21 +436,34 @@ def create_gold_design_report(
     }
 
     def _call():
-        return client.chat.completions.create(
+        start_time = time.time()
+        response = client.chat.completions.create(
             model=model_name,
             messages=[system_msg, user_msg],
             temperature=0.2,
         )
+        duration = time.time() - start_time
+        
+        # Track token usage
+        token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        if hasattr(response, 'usage') and response.usage:
+            token_usage = {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens,
+            }
+        
+        LOGGER.info(f"Gold design report LLM call completed in {duration:.2f}s, tokens: {token_usage}")
+        return response.choices[0].message.content or "", token_usage
 
-    resp = with_retry(
+    result, token_usage = with_retry(
         "Gold design report LLM call",
         _call,
         max_retries=max_retries,
         backoff_seconds=backoff_seconds,
     )
 
-    content = resp.choices[0].message.content or ""
-    return content.strip()
+    return result.strip(), token_usage
 
 
 def create_gold_mart_plan(
@@ -462,7 +475,7 @@ def create_gold_mart_plan(
     model_name: str,
     max_retries: int,
     backoff_seconds: float,
-) -> Dict[str, Any]:
+) -> tuple[Dict[str, Any], Dict[str, int]]:
     """
     Ask the LLM to produce a strict JSON Gold-layer plan that a static
     Gold-runner can consume.
@@ -559,13 +572,27 @@ def create_gold_mart_plan(
     }
 
     def _call():
-        return client.chat.completions.create(
+        start_time = time.time()
+        response = client.chat.completions.create(
             model=model_name,
             messages=[system_msg, user_msg],
             temperature=0.1,
         )
+        duration = time.time() - start_time
+        
+        # Track token usage
+        token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        if hasattr(response, 'usage') and response.usage:
+            token_usage = {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens,
+            }
+        
+        LOGGER.info(f"Gold mart plan LLM call completed in {duration:.2f}s, tokens: {token_usage}")
+        return response, token_usage
 
-    resp = with_retry(
+    resp, token_usage = with_retry(
         "Gold mart plan LLM call",
         _call,
         max_retries=max_retries,
@@ -576,11 +603,11 @@ def create_gold_mart_plan(
     try:
         plan = _parse_json_from_llm(raw)
         validate_gold_plan(plan)
-        return plan
+        return plan, token_usage
     except (PlanParseError, PlanValidationError) as exc:
         LOGGER.error("Gold mart plan parsing/validation failed: %s", exc)
         # Fallback minimal plan if JSON parsing fails
-        return {
+        fallback_plan = {
             "silver_run_id": silver_run_id,
             "gold_layer_objective": (
                 "Fallback Gold plan: basic dims/fact/aggregates due to JSON parse error."
@@ -682,6 +709,7 @@ def create_gold_mart_plan(
                 "Inspect the source Silver metadata and refine the Gold plan manually."
             ],
         }
+        return fallback_plan, token_usage
 
 
 # ---------------------------------------------------------------------
@@ -736,7 +764,7 @@ def main() -> int:
         client = build_llm_client(config.api_key)
 
         # 1) Human-readable design report
-        design_md = create_gold_design_report(
+        design_md, design_tokens = create_gold_design_report(
             client=client,
             silver_run_id=silver_run_id,
             silver_agent_context=silver_agent_context,
@@ -749,7 +777,7 @@ def main() -> int:
         LOGGER.info("Wrote Gold design report to: %s", design_report_path)
 
         # 2) Machine-readable mart plan
-        mart_plan = create_gold_mart_plan(
+        mart_plan, plan_tokens = create_gold_mart_plan(
             client=client,
             silver_run_id=silver_run_id,
             silver_agent_context=silver_agent_context,
@@ -760,6 +788,16 @@ def main() -> int:
         )
         write_json(mart_plan_path, mart_plan)
         LOGGER.info("Wrote Gold mart plan to: %s", mart_plan_path)
+        
+        # Log combined token usage
+        total_tokens = {
+            "design_report_tokens": design_tokens,
+            "mart_plan_tokens": plan_tokens,
+            "total_prompt_tokens": design_tokens["prompt_tokens"] + plan_tokens["prompt_tokens"],
+            "total_completion_tokens": design_tokens["completion_tokens"] + plan_tokens["completion_tokens"],
+            "total_tokens": design_tokens["total_tokens"] + plan_tokens["total_tokens"],
+        }
+        LOGGER.info("Gold Draft Agent total token usage: %s", total_tokens)
 
         LOGGER.info("Gold-layer planning completed successfully.")
         return 0

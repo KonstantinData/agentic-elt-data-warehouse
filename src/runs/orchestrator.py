@@ -443,6 +443,29 @@ def main() -> int:
         gold_run_id=gold_run_id,
         no_new_data=no_new_data,
     )
+    
+    # Generate business insights report if Gold layer was successful
+    if gold_run_id and not no_new_data:
+        try:
+            business_insights_cmd = build_python_cmd(
+                repo_root,
+                Path("src/agents/business_insights_agent.py"),
+                orchestrator_run_id,
+            )
+            business_result = run_subprocess_step(
+                name="business insights",
+                cmd=business_insights_cmd,
+                env=env,
+                cwd=repo_root,
+                log_dir=log_dir,
+            )
+            step_results.append(business_result)
+        except Exception as exc:
+            # Don't fail the entire pipeline if business insights fail
+            step_results.append(make_skipped_step(
+                "business insights", 
+                f"Failed to generate business insights: {exc}"
+            ))
 
     return 0 if all(s.status in {"success", "skipped"} for s in step_results) else 1
 

@@ -141,7 +141,8 @@ def generate_gold_script(
     gold_agent_context: Dict[str, Any],
     gold_human_report_md: str,
     model_name: str = "gpt-4.1",
-) -> str:
+    logger: logging.Logger = None,
+) -> tuple[str, Dict[str, int]]:
 
     system_msg = {
         "role": "system",
@@ -177,6 +178,7 @@ def generate_gold_script(
         )
     }
 
+    start_time = time.time()
     response = client.chat.completions.create(
         model=model_name,
         messages=[system_msg, user_msg],
@@ -185,9 +187,22 @@ def generate_gold_script(
         frequency_penalty=0,
         presence_penalty=0,
     )
+    duration = time.time() - start_time
+    
+    # Track token usage
+    token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    if hasattr(response, 'usage') and response.usage:
+        token_usage = {
+            "prompt_tokens": response.usage.prompt_tokens,
+            "completion_tokens": response.usage.completion_tokens,
+            "total_tokens": response.usage.total_tokens,
+        }
+    
+    if logger:
+        logger.info(f"LLM call completed in {duration:.2f}s, tokens: {token_usage}")
 
     raw = response.choices[0].message.content
-    return extract_python_block(raw)
+    return extract_python_block(raw), token_usage
 
 
 # -------------------------------------------------------------
@@ -213,11 +228,11 @@ def validate_inputs(paths: Mapping[str, Path]) -> None:
 
 
 def call_llm_with_retries(
-    call: Callable[[], str],
+    call: Callable[[], tuple[str, Dict[str, int]]],
     logger: logging.Logger,
     retries: int = 3,
     base_delay_s: float = 1.0,
-) -> str:
+) -> tuple[str, Dict[str, int]]:
     for attempt in range(1, retries + 1):
         try:
             return call()
@@ -291,7 +306,7 @@ def main(argv: List[str] | None = None, llm_client_factory: Callable[[], OpenAI]
 
     # Generate final Gold-layer script
     logger.info("Generating Gold script from LLM.")
-    python_code = call_llm_with_retries(
+    python_code, token_usage = call_llm_with_retries(
         lambda: generate_gold_script(
             client=client,
             template_text=template_text,

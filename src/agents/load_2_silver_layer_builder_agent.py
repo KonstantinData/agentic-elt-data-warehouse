@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import sys
+import time
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, Dict
@@ -105,7 +106,7 @@ def generate_silver_script(
     agent_context: Dict[str, Any],
     human_report_md: str,
     model_name: str = "gpt-4.1",
-) -> str:
+) -> tuple[str, Dict[str, int]]:
     """Generate the Silver-layer ETL script via the LLM."""
 
     system_msg = {
@@ -137,6 +138,7 @@ def generate_silver_script(
         ),
     }
 
+    start_time = time.time()
     response = client.chat.completions.create(
         model=model_name,
         messages=[system_msg, user_msg],
@@ -145,9 +147,22 @@ def generate_silver_script(
         frequency_penalty=0,
         presence_penalty=0,
     )
+    duration = time.time() - start_time
+    
+    # Track token usage
+    token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    if hasattr(response, 'usage') and response.usage:
+        token_usage = {
+            "prompt_tokens": response.usage.prompt_tokens,
+            "completion_tokens": response.usage.completion_tokens,
+            "total_tokens": response.usage.total_tokens,
+        }
+    
+    logger = logging.getLogger("silver_builder")
+    logger.info(f"LLM call completed in {duration:.2f}s, tokens: {token_usage}")
 
     raw = response.choices[0].message.content
-    return extract_python_block(raw)
+    return extract_python_block(raw), token_usage
 
 
 def validate_python_syntax(code: str) -> None:
@@ -187,6 +202,46 @@ def build_provenance_header(
 # Main Agent Logic
 # -------------------------------------------------------------
 
+def create_elt_report_html(run_id: str, agent_context: Dict[str, Any], human_report_md: str) -> str:
+    """Create a simple HTML report for the Silver layer ELT process."""
+    html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Silver Layer ELT Report - {run_id}</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; }}
+        .header {{ background-color: #f0f0f0; padding: 10px; border-radius: 5px; }}
+        .section {{ margin: 20px 0; }}
+        .code {{ background-color: #f8f8f8; padding: 10px; border-radius: 3px; font-family: monospace; }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Silver Layer ELT Report</h1>
+        <p><strong>Run ID:</strong> {run_id}</p>
+        <p><strong>Generated:</strong> {agent_context.get('timestamp', 'Unknown')}</p>
+    </div>
+    
+    <div class="section">
+        <h2>Processing Summary</h2>
+        <div class="code">
+            <pre>{json.dumps(agent_context, indent=2)}</pre>
+        </div>
+    </div>
+    
+    <div class="section">
+        <h2>Human Report</h2>
+        <div class="code">
+            <pre>{human_report_md}</pre>
+        </div>
+    </div>
+</body>
+</html>
+    """.strip()
+    return html_content
+
+
 def main() -> int:
     """Entry point for the builder agent."""
     logger = setup_logging()
@@ -220,7 +275,7 @@ def main() -> int:
     # Generate final Silver-layer script
     logger.info("[BUILDER] Generating Silver script from LLM...")
     model_name = "gpt-4.1"
-    python_code = generate_silver_script(
+    python_code, token_usage = generate_silver_script(
         client=client,
         template_text=template_text,
         agent_context=json.loads(json.dumps(agent_context, sort_keys=True)),
@@ -241,6 +296,13 @@ def main() -> int:
     runner_path = repo_root / "src" / "runs" / "load_2_silver_layer.py"
     runner_path.write_text(final_code, encoding="utf-8")
     logger.info(f"[BUILDER] Wrote load_2_silver_layer.py to: {runner_path}")
+    
+    # Create ELT report HTML
+    elt_report_html = create_elt_report_html(run_id, agent_context, human_report_md)
+    elt_report_path = report_dir / "elt_report.html"
+    elt_report_path.write_text(elt_report_html, encoding="utf-8")
+    logger.info(f"[BUILDER] Wrote elt_report.html to: {elt_report_path}")
+    
     return 0
 
 
