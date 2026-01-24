@@ -571,6 +571,9 @@ def run_report_agent(
         )
         logger.info("Wrote agent context JSON: %s", json_out_path)
         
+        # Create metadata.yaml for Gold Draft Agent compatibility
+        _create_silver_metadata_yaml(silver_run_dir, json_data, generated_at)
+        
         elapsed = time.monotonic() - start_time
         logger.info("Completed Silver draft report generation in %.2fs.", elapsed)
         
@@ -582,6 +585,22 @@ def run_report_agent(
             output_dir.mkdir(parents=True, exist_ok=True)
             _create_fallback_outputs(output_dir, run_id, silver_run_id, {}, 
                                    datetime.now(timezone.utc).isoformat(), str(exc))
+            # Also create minimal metadata.yaml for Gold Draft compatibility
+            try:
+                silver_run_dir = Path("artifacts") / "silver" / run_id
+                minimal_metadata = {
+                    "run_id": run_id,
+                    "layer": "silver",
+                    "status": "error",
+                    "error_message": str(exc),
+                    "summary": {"files_total": 0, "files_success": 0, "files_failed": 0},
+                    "tables": {}
+                }
+                metadata_path = silver_run_dir / "metadata.yaml"
+                with metadata_path.open("w", encoding="utf-8") as f:
+                    yaml.dump(minimal_metadata, f)
+            except Exception:
+                pass  # Ignore metadata creation errors in fallback
         except Exception as fallback_exc:
             logger.error("Failed to create fallback outputs: %s", fallback_exc)
         raise
@@ -762,6 +781,43 @@ def _build_agent_context(run_id: str, silver_run_id: str | None, metadata_dict: 
             "tables_failed": len([t for t in profile.get("tables", {}).values() if "error" in t]),
         },
     }
+
+
+def _create_silver_metadata_yaml(silver_run_dir: Path, json_data: Dict[str, Any], generated_at: str) -> None:
+    """Create metadata.yaml file that Gold Draft Agent expects."""
+    metadata_yaml = {
+        "run_id": json_data["run_id"],
+        "layer": "silver",
+        "source_layer": "bronze", 
+        "generated_at_utc": generated_at,
+        "summary": {
+            "files_total": json_data["files_total"],
+            "files_success": json_data["files_success"],
+            "files_failed": json_data["files_failed"],
+            "tables_processed": json_data["performance_metrics"]["tables_processed"],
+            "total_rows": json_data["performance_metrics"]["total_rows_processed"],
+            "has_errors": json_data["has_errors"]
+        },
+        "tables": {}
+    }
+    
+    # Add table metadata from profile
+    for table_name, table_info in json_data["profile"]["tables"].items():
+        if "error" not in table_info:
+            metadata_yaml["tables"][table_name] = {
+                "status": "SUCCESS",
+                "rows_in": table_info["row_count"],
+                "rows_out": table_info["row_count"],
+                "columns": table_info["columns"],
+                "inferred_types": table_info["inferred_types"],
+                "transformations_suggested": len(table_info["suggested_silver_transforms"])
+            }
+    
+    metadata_path = silver_run_dir / "metadata.yaml"
+    with metadata_path.open("w", encoding="utf-8") as f:
+        yaml.dump(metadata_yaml, f, default_flow_style=False, sort_keys=False)
+    
+    logger.info("Created Silver metadata.yaml: %s", metadata_path)
 
 
 def _create_fallback_outputs(output_dir: Path, run_id: str, silver_run_id: str | None, 

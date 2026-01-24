@@ -1,0 +1,11 @@
+{"level":"INFO","message":"[BUILDER] REPO_ROOT=D:\Git-GitHub\Repositories\07-Portfolio\agentic-elt-data-warehouse"}
+{"level":"INFO","message":"[BUILDER] Using RUN_ID=20260124_213259_#39e076b1"}
+Traceback (most recent call last):
+  File "D:\Git-GitHub\Repositories\07-Portfolio\agentic-elt-data-warehouse\src\agents\load_2_silver_layer_builder_agent.py", line 248, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "D:\Git-GitHub\Repositories\07-Portfolio\agentic-elt-data-warehouse\src\agents\load_2_silver_layer_builder_agent.py", line 207, in main
+    ensure_file_exists(context_path)
+  File "D:\Git-GitHub\Repositories\07-Portfolio\agentic-elt-data-warehouse\src\agents\load_2_silver_layer_builder_agent.py", line 56, in ensure_file_exists
+    raise FileNotFoundError(f"Required file not found: {path}")
+FileNotFoundError: Required file not found: D:\Git-GitHub\Repositories\07-Portfolio\agentic-elt-data-warehouse\tmp\draft_reports\silver\20260124_213259_#39e076b1\silver_run_agent_context.json

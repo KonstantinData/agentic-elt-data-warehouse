@@ -378,10 +378,11 @@ def main() -> int:
                         "Skipped via --skip-llm.",
                     )
                 else:
+                    # Use bronze_run_id for Gold Draft to ensure consistency
                     gold_draft_cmd = build_python_cmd(
                         repo_root,
                         Path("src/agents/load_3_gold_layer_draft_agent.py"),
-                        silver_run_id,
+                        bronze_run_id,  # Use bronze_run_id instead of silver_run_id
                     )
                     step_results.append(
                         run_subprocess_step(
@@ -393,10 +394,11 @@ def main() -> int:
                         )
                     )
 
+                    # Use bronze_run_id for Gold Builder to ensure consistency
                     gold_builder_cmd = build_python_cmd(
                         repo_root,
                         Path("src/agents/load_3_gold_layer_builder_agent.py"),
-                        silver_run_id,
+                        bronze_run_id,  # Use bronze_run_id instead of silver_run_id
                     )
                     builder_env = env.copy()
                     builder_env["SKIP_RUNNER_EXECUTION"] = "1"

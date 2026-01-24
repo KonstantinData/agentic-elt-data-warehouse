@@ -199,7 +199,7 @@ def main() -> int:
     run_id = sys.argv[1]
     logger.info(f"[BUILDER] Using RUN_ID={run_id}")
 
-    report_dir = repo_root / "tmp" / "draft_reports" / "silver" / run_id
+    report_dir = repo_root / "artifacts" / "silver" / run_id / "reports"
     context_path = report_dir / "silver_run_agent_context.json"
     human_report_path = report_dir / "silver_run_human_report.md"
     template_path = repo_root / "src" / "templates" / "load_2_silver_layer_template.py"
