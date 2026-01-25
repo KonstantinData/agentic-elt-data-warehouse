@@ -1,0 +1,216 @@
+# Agentic ELT Data Warehouse
+
+🇺🇸 **[English Version](README.md)**
+
+Dieses Repository enthält eine produktionsreife agentic ELT/Analytics-Pipeline, die LLM-Agents verwendet, um automatisch Datentransformationscode zu generieren und auszuführen. Das System demonstriert, wie KI in traditionelle Data Engineering Workflows integriert werden kann, um sich selbst anpassende Datenpipelines zu erstellen.
+
+## 🚀 Schnellstart
+
+### Fork & Clone
+1. Forken Sie dieses Repository zu Ihrem GitHub-Account
+2. Klonen Sie Ihren Fork lokal:
+```bash
+git clone https://github.com/YOUR_USERNAME/agentic-elt-data-warehouse.git
+cd agentic-elt-data-warehouse
+```
+
+### Voraussetzungen
+- **Python 3.8+** (getestet mit Python 3.12)
+- **OpenAI API Key** (für LLM-Agents)
+- **Git** für Versionskontrolle
+
+### Installation
+
+1. **Virtuelle Umgebung erstellen:**
+```bash
+python -m venv venv
+# Windows
+venv\Scripts\activate
+# Linux/Mac
+source venv/bin/activate
+```
+
+2. **Abhängigkeiten installieren:**
+```bash
+pip install -r requirements.txt
+```
+
+3. **Umgebungsvariablen einrichten:**
+```bash
+# Beispiel-Umgebungsdatei kopieren
+cp configs\.env.example .env
+# .env bearbeiten und OpenAI API Key hinzufügen
+# OPENAI_API_KEY=your_api_key_here
+```
+
+### Beispieldatensatz
+Das Repository enthält einen vollständigen Beispieldatensatz im `raw/` Verzeichnis:
+- **CRM-Daten** (`raw/source_crm/`): Kundeninformationen, Produktdetails, Verkaufsdaten
+- **ERP-Daten** (`raw/source_erp/`): Zusätzliche Kundendaten, Standortinformationen, Produktkategorien, Transaktionen
+
+Dieser synthetische Datensatz repräsentiert die Datenstruktur eines typischen mittelständischen Unternehmens und ist sofort einsatzbereit.
+
+## 🏃♂️ Pipeline ausführen
+
+Führen Sie die komplette ELT-Pipeline aus:
+```bash
+python .\src\runs\start_run.py
+```
+
+### Was passiert
+Die Pipeline führt diese Schritte automatisch aus:
+
+1. **🥉 Bronze Layer** - Rohdatenaufnahme
+   - Kopiert CSV-Dateien aus `raw/` Verzeichnissen
+   - Validiert Datenintegrität mit Checksummen
+   - Erstellt unveränderliche Snapshots
+
+2. **🥈 Silver Layer** - Datenbereinigung & Standardisierung
+   - LLM-Agents analysieren Datenqualitätsprobleme
+   - Generieren Python-Code für Datenbereinigung
+   - Führen Transformationen automatisch aus
+   - Behandeln fehlende Werte, Datentypen, Formatierung
+
+3. **🥇 Gold Layer** - Business Marts Erstellung
+   - LLM-Agents entwerfen Star-Schema
+   - Generieren Dimensions- und Fact-Tabellen
+   - Erstellen Business-KPI-Aggregationen
+   - Bauen analytics-bereite Datensätze
+
+4. **📊 Zusammenfassungsbericht** - Ausführungszusammenfassung
+   - Pipeline-Ausführungsmetriken
+   - Datenqualitätsbewertungen
+   - Generierte Code-Dokumentation
+
+## 📁 Ausgabestruktur
+
+Alle Pipeline-Ausgaben sind nach Run-ID organisiert:
+
+```
+artifacts/
+├── bronze/YYYYMMDD_HHMMSS_#hash/     # Rohdaten-Snapshots
+│   ├── data/*.csv                     # Kopierte Quelldateien
+│   └── reports/elt_report.html        # Aufnahmebericht
+├── silver/YYYYMMDD_HHMMSS_#hash/      # Bereinigte Daten
+│   ├── data/*.csv                     # Standardisierte Tabellen
+│   └── reports/elt_report.html        # Qualitätsbericht
+├── gold/marts/YYYYMMDD_HHMMSS_#hash/  # Business Marts
+│   ├── data/*.csv                     # Star-Schema-Tabellen
+│   └── reports/gold_report.html       # Marts-Dokumentation
+├── orchestrator/YYYYMMDD_HHMMSS_#hash/# Ausführungslogs
+│   └── logs/*.log                     # Detaillierte Schritt-Logs
+└── reports/YYYYMMDD_HHMMSS_#hash/     # Zusammenfassungsberichte
+    ├── summary_report.md              # Menschenlesbare Zusammenfassung
+    └── summary_report.json            # Maschinenlesbare Metriken
+```
+
+## 🔧 Konfigurationsoptionen
+
+### Inkrementelle Verarbeitung
+Die Pipeline erkennt automatisch unveränderte Rohdaten und überspringt die Verarbeitung, wenn keine neuen Daten verfügbar sind. Dies spart Zeit und Ressourcen bei nachfolgenden Läufen mit identischen Eingabedateien.
+
+### Umgebungsvariablen
+Wichtige Konfiguration in `.env`:
+```bash
+OPENAI_API_KEY=your_key_here          # Erforderlich für LLM-Agents
+ORCHESTRATOR_RUN_ID=custom_run_id     # Optional: benutzerdefinierte Run-ID
+```
+
+## 🧪 Testen
+
+Führen Sie die komplette Test-Suite aus:
+```bash
+pytest -q
+```
+
+Test-Kategorien:
+- **Unit-Tests** - Einzelkomponenten-Tests
+- **Integrationstests** - End-to-End-Pipeline-Validierung
+- **Vertragstests** - Datenschema-Validierung
+- **Qualitätstests** - Code-Qualität und Dokumentation
+
+## 🏗️ Architektur
+
+### Agentic-Komponenten
+- **Draft Agents** - Analysieren Daten und generieren Transformationscode
+- **Builder Agents** - Verfeinern und optimieren generierten Code
+- **Quality Agents** - Validieren Code-Qualität und Performance
+
+### Datenfluss
+```
+Rohdaten → Bronze (Aufnahme) → Silver (Bereinigung) → Gold (Business-Logik) → Berichte
+     ↓           ↓                    ↓                    ↓
+   LLM-Analyse → Code-Generierung → Ausführung → Validierung
+```
+
+### Hauptmerkmale
+- **Deterministische Ausführung** - Gleiche Eingaben produzieren identische Ausgaben
+- **Audit-Trail** - Vollständige Lineage-Verfolgung
+- **Fehlerbehandlung** - Elegante Fehlerwiederherstellung
+- **Inkrementelle Verarbeitung** - Überspringen unveränderter Daten
+- **DSGVO-Konformität** - PII-Behandlung und Pseudonymisierung
+
+## 📊 Beispieldaten-Übersicht
+
+Der enthaltene Datensatz simuliert:
+- **~1000 Kunden** über mehrere Segmente
+- **~50 Produkte** in verschiedenen Kategorien
+- **~5000 Verkaufstransaktionen** über Zeiträume
+- **Mehrere Datenqualitätsprobleme** zum Testen der Bereinigungslogik
+
+Daten enthalten absichtliche Qualitätsprobleme:
+- Fehlende Werte
+- Inkonsistente Formatierung
+- Doppelte Datensätze
+- Datentyp-Unstimmigkeiten
+
+## 🔍 Monitoring & Observability
+
+Jeder Lauf generiert umfassende Monitoring-Daten:
+- **Ausführungsmetriken** - Laufzeit, Speicherverbrauch, Erfolgsraten
+- **Datenqualitäts-Scores** - Vollständigkeit, Gültigkeit, Konsistenz
+- **Code-Generierungslogs** - LLM-Interaktionen und Entscheidungen
+- **Fehler-Tracking** - Detaillierte Fehleranalyse
+
+## 🤝 Mitwirken
+
+1. Repository forken
+2. Feature-Branch erstellen: `git checkout -b feature/amazing-feature`
+3. Änderungen committen: `git commit -m 'Add amazing feature'`
+4. Zu Branch pushen: `git push origin feature/amazing-feature`
+5. Pull Request öffnen
+
+## 📝 Lizenz
+
+Dieses Projekt ist unter der MIT-Lizenz lizenziert - siehe die [LICENSE](LICENSE) Datei für Details.
+
+## 🆘 Fehlerbehebung
+
+### Häufige Probleme
+
+**Fehlender OpenAI API Key:**
+```
+RuntimeError: Missing OPEN_AI_KEY or OPENAI_API_KEY in .env
+```
+Lösung: OpenAI API Key zur `.env` Datei hinzufügen
+
+**Import-Fehler:**
+```
+ModuleNotFoundError: No module named 'xyz'
+```
+Lösung: Sicherstellen, dass virtuelle Umgebung aktiviert und Abhängigkeiten installiert sind
+
+**Berechtigungsfehler:**
+```
+PermissionError: [Errno 13] Permission denied
+```
+Lösung: Dateiberechtigungen prüfen und Schreibzugriff auf `artifacts/` Verzeichnis sicherstellen
+
+### Hilfe erhalten
+- Bestehende [Issues](https://github.com/YOUR_USERNAME/agentic-elt-data-warehouse/issues) prüfen
+- Ausführungslogs in `artifacts/orchestrator/*/logs/` überprüfen
+- Debug-Logging durch Setzen von `LOG_LEVEL=DEBUG` in `.env` aktivieren
+
+---
+
+**Bereit, KI-gestützte Datentechnik in Aktion zu sehen? Führen Sie `python .\src\runs\start_run.py` aus und erleben Sie die Magie! ✨**

@@ -1,5 +1,7 @@
 # Agentic ELT Data Warehouse
 
+🇩🇪 **[Deutsche Version / German Version](README_de.md)**
+
 This repository contains a production-ready agentic ELT/analytics pipeline that uses LLM agents to automatically generate and execute data transformation code. The system demonstrates how AI can be integrated into traditional data engineering workflows to create self-adapting data pipelines.
 
 ## 🚀 Quick Start
