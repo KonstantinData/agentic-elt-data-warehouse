@@ -1,7 +1,0 @@
-{"level":"INFO","message":"[BUILDER] REPO_ROOT=D:\Git-GitHub\Repositories\07-Portfolio\agentic-elt-data-warehouse"}
-{"level":"INFO","message":"[BUILDER] Using RUN_ID=20260124_231016_#6470e523"}
-{"level":"INFO","message":"[BUILDER] Generating Silver script from LLM..."}
-{"level":"INFO","message":"HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK""}
-{"level":"INFO","message":"LLM call completed in 61.77s, tokens: {'prompt_tokens': 13814, 'completion_tokens': 7033, 'total_tokens': 20847}"}
-{"level":"INFO","message":"[BUILDER] Wrote load_2_silver_layer.py to: D:\Git-GitHub\Repositories\07-Portfolio\agentic-elt-data-warehouse\src\runs\load_2_silver_layer.py"}
-{"level":"INFO","message":"[BUILDER] Wrote elt_report.html to: D:\Git-GitHub\Repositories\07-Portfolio\agentic-elt-data-warehouse\artifacts\silver\20260124_231016_#6470e523\reports\elt_report.html"}

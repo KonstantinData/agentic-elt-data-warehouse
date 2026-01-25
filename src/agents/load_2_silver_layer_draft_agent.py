@@ -494,14 +494,30 @@ def run_report_agent(
     model_name: str = "gpt-4.1-mini",
 ) -> None:
     """
-    Produces two outputs in artifacts/silver/<run_id>/reports/:
+    Produces two outputs in artifacts/silver/<silver_run_id>/reports/:
       - silver_run_human_report.md
       - silver_run_agent_context.json
     
+    If silver_run_id is not provided, generates one from bronze run_id.
     Gracefully handles missing files and LLM failures.
     """
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    logger.info("Starting Silver draft report generation. run_id=%s", run_id)
+    
+    # Generate silver_run_id if not provided (same logic as Silver Runner)
+    if silver_run_id is None:
+        import re
+        from datetime import datetime, timezone
+        
+        RUN_ID_RE = re.compile(r"^(?P<ts>\d{8}_\d{6})_#(?P<suffix>[0-9a-fA-F]{6,32})$")
+        m = RUN_ID_RE.match(run_id)
+        if m:
+            suffix = m.group("suffix")
+            now_dt = datetime.now(timezone.utc)
+            silver_run_id = f"{now_dt.strftime('%Y%m%d_%H%M%S')}_#{suffix}"
+        else:
+            silver_run_id = run_id
+    
+    logger.info("Starting Silver draft report generation. bronze_run_id=%s, silver_run_id=%s", run_id, silver_run_id)
     start_time = time.monotonic()
 
     try:
@@ -519,8 +535,8 @@ def run_report_agent(
         log_path = data_dir / "run_log.txt"
         html_report_path = reports_dir / "elt_report.html"
 
-        # Setup output directory
-        silver_run_dir = Path("artifacts") / "silver" / run_id
+        # Setup output directory - use silver_run_id instead of bronze run_id
+        silver_run_dir = Path("artifacts") / "silver" / silver_run_id
         output_dir = silver_run_dir / "reports"
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -575,19 +591,19 @@ def run_report_agent(
         _create_silver_metadata_yaml(silver_run_dir, json_data, generated_at)
         
         elapsed = time.monotonic() - start_time
-        logger.info("Completed Silver draft report generation in %.2fs.", elapsed)
+        logger.info("Completed Silver draft report generation in %.2fs. silver_run_id=%s", elapsed, silver_run_id)
         
     except Exception as exc:
         logger.exception("Silver draft agent failed: %s", exc)
         # Ensure we always create some output for downstream agents
         try:
-            output_dir = Path("artifacts") / "silver" / run_id / "reports"
+            output_dir = Path("artifacts") / "silver" / silver_run_id / "reports"
             output_dir.mkdir(parents=True, exist_ok=True)
             _create_fallback_outputs(output_dir, run_id, silver_run_id, {}, 
                                    datetime.now(timezone.utc).isoformat(), str(exc))
             # Also create minimal metadata.yaml for Gold Draft compatibility
             try:
-                silver_run_dir = Path("artifacts") / "silver" / run_id
+                silver_run_dir = Path("artifacts") / "silver" / silver_run_id
                 minimal_metadata = {
                     "run_id": run_id,
                     "layer": "silver",

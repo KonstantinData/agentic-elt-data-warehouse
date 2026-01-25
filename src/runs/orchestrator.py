@@ -205,7 +205,7 @@ def run_subprocess_step(
     )
 
 
-def run_silver_draft_step(repo_root: Path, log_dir: Path) -> StepResult:
+def run_silver_draft_step(repo_root: Path, log_dir: Path, bronze_run_id: str) -> StepResult:
     name = "silver draft"
     started = utc_now()
     t0 = time.perf_counter()
@@ -213,9 +213,6 @@ def run_silver_draft_step(repo_root: Path, log_dir: Path) -> StepResult:
     details = None
     log_path = log_dir / "silver_draft.log"
     try:
-        bronze_root = repo_root / "artifacts" / "bronze"
-        bronze_run_id = find_latest_run_id(bronze_root)
-
         from agents.load_2_silver_layer_draft_agent import run_report_agent
 
         run_report_agent(
@@ -328,7 +325,7 @@ def main() -> int:
                     "Skipped via --skip-llm.",
                 )
             else:
-                step_results.append(run_silver_draft_step(repo_root, log_dir))
+                step_results.append(run_silver_draft_step(repo_root, log_dir, bronze_run_id))
 
                 silver_builder_cmd = build_python_cmd(
                     repo_root,
