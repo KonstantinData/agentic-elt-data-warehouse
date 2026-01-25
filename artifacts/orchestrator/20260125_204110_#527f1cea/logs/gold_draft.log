@@ -1,0 +1,9 @@
+2026-01-25 21:41:45,507 WARNING __main__ - Requested Silver run missing context; falling back to latest run with suffix #527f1cea: 20260125_204111_#527f1cea
+2026-01-25 21:42:13,150 INFO httpx - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-01-25 21:42:13,154 INFO __main__ - Gold design report LLM call completed in 27.45s, tokens: {'prompt_tokens': 4931, 'completion_tokens': 2050, 'total_tokens': 6981}
+2026-01-25 21:42:13,155 INFO __main__ - Wrote Gold design report to: D:\Git-GitHub\Repositories\07-Portfolio\agentic-elt-data-warehouse\tmp\draft_reports\gold\20260125_204111_#527f1cea\gold_run_human_report.md
+2026-01-25 21:42:51,697 INFO httpx - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-01-25 21:42:51,824 INFO __main__ - Gold mart plan LLM call completed in 38.67s, tokens: {'prompt_tokens': 5229, 'completion_tokens': 2634, 'total_tokens': 7863}
+2026-01-25 21:42:51,826 INFO __main__ - Wrote Gold mart plan to: D:\Git-GitHub\Repositories\07-Portfolio\agentic-elt-data-warehouse\tmp\draft_reports\gold\20260125_204111_#527f1cea\gold_run_agent_context.json
+2026-01-25 21:42:51,826 INFO __main__ - Gold Draft Agent total token usage: {'design_report_tokens': {'prompt_tokens': 4931, 'completion_tokens': 2050, 'total_tokens': 6981}, 'mart_plan_tokens': {'prompt_tokens': 5229, 'completion_tokens': 2634, 'total_tokens': 7863}, 'total_prompt_tokens': 10160, 'total_completion_tokens': 4684, 'total_tokens': 14844}
+2026-01-25 21:42:51,826 INFO __main__ - Gold-layer planning completed successfully.
