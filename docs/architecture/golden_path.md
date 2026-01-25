@@ -1,61 +1,83 @@
 # Golden Path Architecture
 
-The **Golden Path** is a deterministic, reproducible workflow that transforms raw CRM and ERP data into actionable insights.  It is composed of seven stages executed in sequence by `src/pipeline/golden_path.py`.
+The **Golden Path** is a deterministic, reproducible workflow that transforms raw CRM and ERP data into actionable insights. It is composed of three main layers executed in sequence by `src/runs/orchestrator.py`.
 
-## Stages
+## Architecture Overview
 
-### 1. Bronze Layer
+The pipeline follows a **Medallion Architecture** with three layers:
+- **🥉 Bronze Layer**: Raw data ingestion
+- **🥈 Silver Layer**: Data cleaning and standardization  
+- **🥇 Gold Layer**: Business marts and analytics
 
-Raw CSV files from `raw/source_crm` and `raw/source_erp` are copied verbatim into the run directory under `bronze/data/`.  The bronze loader records per‑file metadata (size, modification time, SHA‑256 checksum) and produces an HTML report summarising load status.  No transformations occur at this stage.
+## Layers
 
-### 2. Silver Layer
+### 1. Bronze Layer (`src/runs/load_1_bronze_layer.py`)
 
-The silver loader cleans and standardises each table individually:
+Raw CSV files from `raw/source_crm` and `raw/source_erp` are copied verbatim into the run directory under `artifacts/bronze/<run_id>/data/`. The bronze loader records per‑file metadata (size, modification time, SHA‑256 checksum) and produces an HTML report summarising load status. No transformations occur at this stage.
 
-- Trims whitespace and converts empty strings to `NA`.
-- Normalises dates to ISO format (`YYYY-MM-DD`).
-- Parses numeric columns and converts identifiers to nullable integers.
-- Harmonises domain codes (e.g. gender values to `M`/`F`/`NA`).
+**Run ID Format**: `YYYYMMDD_HHMMSS_#<hex>`
 
-The output tables remain at the same grain as the input but are schema‑consistent.  Metadata and an HTML report are produced for auditability.
+### 2. Silver Layer (Agentic Data Cleaning)
 
-### 3. Gold Layer
+The silver layer uses **LLM agents** to automatically clean and standardize data:
 
-The gold layer builds a star‑schema data warehouse.  It reads silver tables and constructs:
+#### **Silver Draft Agent** (`src/agents/load_2_silver_layer_draft_agent.py`)
+- Analyzes Bronze data quality
+- Identifies transformation needs
+- Creates analysis reports
 
-- **Dimension tables** – customers, products and locations.
-- **Fact table** – sales order lines.
-- **Aggregated marts** – executive KPIs, product performance and geographic performance.
-- **Wide table** – sales enriched with customer and product attributes.
+#### **Silver Builder Agent** (`src/agents/load_2_silver_layer_builder_agent.py`)
+- Generates executable Python code
+- Implements data cleaning logic
+- Creates `src/runs/load_2_silver_layer.py`
 
-Each mart is written as a separate CSV under `gold/data/` and accompanied by metadata and a report.
+#### **Silver Runner** (`src/runs/load_2_silver_layer.py`)
+- Executes generated transformations:
+  - Trims whitespace and converts empty strings to `NA`
+  - Normalizes dates to ISO format (`YYYY-MM-DD`)
+  - Parses numeric columns and converts identifiers to nullable integers
+  - Harmonizes domain codes (e.g. gender values to `M`/`F`/`NA`)
 
-### 4. Exploratory Data Analysis (EDA)
+**Run ID Logic**: Creates new run_id with fresh timestamp but same suffix as Bronze
+- Bronze: `20260125_204110_#527f1cea`
+- Silver: `20260125_204143_#527f1cea`
 
-The EDA step computes summary statistics (counts, missingness, distributions) for each gold mart.  It produces:
+### 3. Gold Layer (Agentic Business Marts)
 
-- `step1_eda/data/eda_summary.json` – JSON file containing aggregated metrics per table (no PII).
-- `step1_eda/reports/eda_report.md` – markdown narrative describing data quality findings and anomalies.
+The gold layer uses **LLM agents** to build star‑schema data warehouses:
 
-### 5. Feature Engineering
+#### **Gold Draft Agent** (`src/agents/load_3_gold_layer_draft_agent.py`)
+- Analyzes Silver data for business patterns
+- Designs star schema architecture
+- Plans dimension and fact tables
 
-Customer‑level features are engineered from the gold marts.  Examples include:
+#### **Gold Builder Agent** (`src/agents/load_3_gold_layer_builder_agent.py`)
+- Generates data mart creation code
+- Implements star schema logic
+- Creates `src/runs/load_3_gold_layer.py`
 
-- Total revenue and total quantity across orders.
-- Average order value.
-- Number of distinct products purchased.
-- Recency of last purchase.
+#### **Gold Runner** (`src/runs/load_3_gold_layer.py`)
+- Creates business-ready data marts:
+  - **Dimension tables** – customers, products and locations
+  - **Fact table** – sales transactions
+  - **Aggregated marts** – executive KPIs, performance metrics
+  - **Wide tables** – enriched analytical views
 
-The resulting table is written to `step2_feature_engineering/data/customer_features.csv` and documented in `feature_dictionary.md`.
+**Run ID Logic**: Uses Bronze run_id for consistency across business marts
 
-### 6. Segmentation & Clustering
+### 4. Business Insights Agent (`src/agents/business_insights_agent.py`)
 
-Using the engineered features, the pipeline applies k‑means clustering to segment customers.  The algorithm uses a fixed `seed` to ensure determinism.  Outputs include:
+Generates executive reports and business intelligence:
+- Analyzes Gold data marts for KPIs
+- Creates stakeholder-specific reports
+- Generates visualizations and dashboards
+- Produces C-level executive summaries
 
-- `customer_segments.csv` – pseudonymised customer identifier with cluster assignment.
-- `model_metadata.json` – clustering parameters, random seed and feature list.
-- `segmentation_report.md` – cluster sizes, centroids and feature importances.
+## Orchestration
 
-### 7. Final Exposé
-
-A final narrative report (`reports/final_expose.md`) summarises the pipeline run: high‑level data quality, key insights from segmentation and recommended next steps.
+The complete pipeline is orchestrated by `src/runs/orchestrator.py`:
+- Validates environment and prerequisites
+- Executes layers in sequence
+- Handles failures and skip logic
+- Generates comprehensive execution reports
+- Manages run_id consistency across layers
