@@ -1,0 +1,16 @@
+2026-01-25T21:48:00.469614Z | RUN_START run_id=20260125_214800_#013410d7
+2026-01-25T21:48:00.470115Z | SOURCE bronze_run_id=20260125_214726_#013410d7
+2026-01-25T21:48:00.470115Z | CONFIG BRONZE_ROOT=artifacts\bronze SILVER_ROOT=artifacts\silver
+2026-01-25T21:48:00.646490Z | SUCCESS file=CST_AZ12.csv rows_in=18484 rows_out=18484 read=0.009s write=0.010s
+2026-01-25T21:48:00.706974Z | SUCCESS file=LOC_A101.csv rows_in=18484 rows_out=18484 read=0.007s write=0.007s
+2026-01-25T21:48:00.712487Z | SUCCESS file=PX_CAT_G1V2.csv rows_in=37 rows_out=37 read=0.001s write=0.001s
+2026-01-25T21:48:00.818543Z | SUCCESS file=cst_info.csv rows_in=18494 rows_out=18494 read=0.011s write=0.018s
+2026-01-25T21:48:00.827044Z | SUCCESS file=customer_info.csv rows_in=5 rows_out=5 read=0.001s write=0.001s
+2026-01-25T21:48:00.854358Z | SUCCESS file=prd_info.csv rows_in=397 rows_out=397 read=0.001s write=0.001s
+2026-01-25T21:48:00.859359Z | SUCCESS file=product_info.csv rows_in=4 rows_out=4 read=0.001s write=0.001s
+2026-01-25T21:48:01.160283Z | SUCCESS file=sales_details.csv rows_in=60398 rows_out=60398 read=0.032s write=0.094s
+2026-01-25T21:48:01.168789Z | SUCCESS file=sales_transactions.csv rows_in=8 rows_out=8 read=0.001s write=0.001s
+2026-01-25T21:48:01.208196Z | CALL agents.load_2_report_agent.run_report_agent ...
+2026-01-25T21:48:01.566793Z | WARNING: load_2_report_agent failed: UnboundLocalError: cannot access local variable 'datetime' where it is not associated with a value
+2026-01-25T21:48:01.567287Z | RUN_END run_id=20260125_214800_#013410d7 duration_s=0.700 success=9 failed=0
+2026-01-25T21:48:01.567287Z | OUTPUT=artifacts\silver\20260125_214800_#013410d7
