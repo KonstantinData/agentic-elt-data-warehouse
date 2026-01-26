@@ -82,6 +82,51 @@ The pipeline executes these steps automatically:
    - Data quality assessments
    - Generated code documentation
 
+## 📈 Running the Dashboard
+
+### Streamlit overview
+
+The multipage UI is powered by Streamlit (`src/dashboard/app.py`) and reads the latest Silver artifacts that the ELT pipeline writes to `artifacts/runs/<run_id>/silver/data/`. The dashboard lists all available runs, keeps sidebar filters (dates, product lines, countries, genders, etc.) in session state, and reloads datasets automatically whenever you switch the selected run. Each page—from the Executive Overview down to the diagnostics and export views—reuses shared components that persist filters, summarize change signals, and make the current context ready for download.
+
+### Start the Streamlit dashboard
+
+Start the dashboard once at least one Silver run has completed:
+
+#### Windows
+
+```powershell
+scripts\run_dashboard.ps1
+```
+
+#### Linux/macOS
+
+```bash
+./scripts/run_dashboard.sh
+```
+
+Alternatively, run Streamlit directly so you can pass CLI flags:
+
+```bash
+python -m streamlit run src/dashboard/app.py
+```
+
+The dashboard discovers artifacts under `artifacts/runs/<run_id>/silver/data/` (with a safe fallback to `artifacts/silver/<run_id>/data/`). If no runs are available it will prompt you to execute the pipeline first. The first run in the sidebar is always the most recent finish, but you can switch to any earlier run to compare results.
+
+### Streamlit insights
+
+- **Executive Overview (pages/01)** surfaces KPI cards, trend charts, product mix maps, order signal charts, and the diagnostics summary that glue together the most important metrics from the selected Silver run.
+- **Exploration sandbox (pages/02)** exposes a live dataframe preview plus top-products, top-countries, and top-customers tables so you can validate transformation logic without leaving Streamlit.
+- **Run diagnostics (pages/03)** mirrors the metadata, logging, and missingness checks that the pipeline captures and feeds that data into an expandable diagnostics panel.
+- **Exports & context (pages/04)** lets you download the filtered dataset as CSV plus a JSON payload of the active filters, run ID, and artifact source for audit-ready sharing.
+- The sidebar filters are configured and persisted via `src/dashboard/components/filters.py`, so the date range, product keys, gender, and country selections are reused across pages until you reset them.
+
+### Streamlit configuration and tips
+
+- `.streamlit/config.toml` defines the light/dark theme palette; adjust those values if you want a custom brand look for your dashboard.
+- The Streamlit CLI can be tweaked via environment variables such as `STREAMLIT_SERVER_PORT` or `STREAMLIT_BROWSER_GATHER_USAGE_STATS` if the default port is blocked or you want to disable usage reporting.
+- Because the dashboard loads persisted datasets, rerun `python .\src\runs\start_run.py` (or the orchestrator) before launching Streamlit whenever you refresh the raw data; stale runs will be marked with guidance text instead of charts.
+- Use the provided `scripts/run_dashboard.*` wrappers to keep the command consistent across operating systems, or pass `--server.headless true` / `--server.address` arguments directly to `python -m streamlit run` when you host the dashboard.
+
 ## 📁 Output Structure
 
 All pipeline outputs are organized by run ID:

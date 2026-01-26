@@ -47,6 +47,30 @@ The pipeline will automatically:
 3. **🥇 Gold Layer** - LLM agents create business data marts
 4. **📊 Business Insights** - Generate executive reports and visualizations
 
+## 📈 Running the Dashboard
+
+Once a Silver run exists, start the Streamlit dashboard:
+
+### Windows
+
+```powershell
+scripts\run_dashboard.ps1
+```
+
+### Linux/macOS
+
+```bash
+./scripts/run_dashboard.sh
+```
+
+Or run the dashboard directly:
+
+```bash
+python -m streamlit run src/dashboard/app.py
+```
+
+The dashboard looks for artifacts under `artifacts/runs/<run_id>/silver/data/` while remaining compatible with the legacy `artifacts/silver/<run_id>/data/` structure. If no run is present, the UI will offer guidance on re-running the pipeline.
+
 ## Pipeline Output Structure
 
 All outputs are organized by run ID:

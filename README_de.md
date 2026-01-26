@@ -82,6 +82,51 @@ Die Pipeline führt diese Schritte automatisch aus:
    - Datenqualitätsbewertungen
    - Generierte Code-Dokumentation
 
+## 📈 Dashboard ausführen
+
+### Streamlit Überblick
+
+Das multipage Dashboard basiert auf Streamlit (`src/dashboard/app.py`) und lädt die neuesten Silver-Artefakte aus `artifacts/runs/<run_id>/silver/data/`. Es listet alle verfügbaren Runs, speichert die Sidebar-Filter (Datum, Produktlinien, Länder, Geschlecht usw.) im Session-State und lädt die Datensätze neu, sobald ein anderer Run gewählt wird. Jede Seite – vom Executive Overview bis zu Diagnosen und Exporten – greift auf gemeinsame Komponenten zurück, um Filter zu persistieren und den aktuellen Kontext zum Download bereitzustellen.
+
+### Dashboard starten
+
+Starten Sie das Dashboard, sobald mindestens ein Silver-Run abgeschlossen ist:
+
+#### Windows
+
+```powershell
+scripts\run_dashboard.ps1
+```
+
+#### Linux/macOS
+
+```bash
+./scripts/run_dashboard.sh
+```
+
+Alternativ können Sie Streamlit direkt starten, um CLI-Flags mitzugeben:
+
+```bash
+python -m streamlit run src/dashboard/app.py
+```
+
+Das Dashboard entdeckt Artefakte unter `artifacts/runs/<run_id>/silver/data/` (mit sicherer Rückfallebene zu `artifacts/silver/<run_id>/data/`). Fehlen Runs, fordert es Sie auf, zuerst die Pipeline zu starten. Der zuerst gewählte Run ist immer der aktuellste Abschluss, aber Sie können beliebig ältere Runs zum Vergleich auswählen.
+
+### Streamlit-Einblicke
+
+- **Executive Overview (pages/01)** zeigt KPI-Karten, Trenddiagramme, Produktmix-Maps, Order-Signale und das Diagnostik-Panel, das die wichtigsten Kennzahlen des gewählten Silver-Runs zusammenführt.
+- **Exploration Sandbox (pages/02)** bietet eine interaktive Vorschau auf die gefilterten Daten sowie Tabellen zu Top-Produkten, Top-Ländern und Top-Kunden, damit Sie Transformationslogik direkt im Dashboard überprüfen können.
+- **Run Diagnostics (pages/03)** spiegelt Metadaten, Log-Informationen und fehlende Werte wider, die die Pipeline erfasst, und stellt sie in einem aufklappbaren Panel dar.
+- **Exports & Context (pages/04)** erlaubt den Download des gefilterten Datensatzes als CSV sowie eines JSON-Pakets mit aktiven Filtern, Run-ID und Artefaktquelle für Audit-Zwecke.
+- Die Sidebar-Filter werden über `src/dashboard/components/filters.py` konfiguriert und bleiben so lange erhalten, bis Sie sie zurücksetzen.
+
+### Streamlit-Konfiguration und Tipps
+
+- `.streamlit/config.toml` definiert die Light/Dark-Themen und kann angepasst werden, wenn Sie ein eigenes Farbschema benötigen.
+- CLI-Optionen lassen sich über Umgebungsvariablen wie `STREAMLIT_SERVER_PORT` oder `STREAMLIT_BROWSER_GATHER_USAGE_STATS` steuern, etwa wenn der Standard-Port blockiert ist oder Sie die Nutzungsstatistik deaktivieren wollen.
+- Bevor Sie den Streamlit-Dashboard neu starten, führen Sie `python .\src\runs\start_run.py` (oder den Orchestrator) erneut aus, damit frische Silver-Artefakte vorliegen; veraltete Runs zeigen stattdessen erklärenden Hinweistext.
+- Verwenden Sie die Skripte `scripts/run_dashboard.ps1`/`.sh`, um den Befehl über Betriebssysteme hinweg konsistent zu halten, oder geben Sie direkt Flags wie `--server.headless true` oder `--server.address` an `python -m streamlit run`, wenn Sie das Dashboard hosten.
+
 ## 📁 Ausgabestruktur
 
 Alle Pipeline-Ausgaben sind nach Run-ID organisiert:
