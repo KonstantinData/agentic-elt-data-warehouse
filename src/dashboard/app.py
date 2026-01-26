@@ -58,10 +58,10 @@ def _setup_sidebar(state) -> dict | None:
 
 def _register_pages() -> st.StreamlitPage:
     pages = [
-        st.Page("pages/01_executive_overview.py", title="Executive Overview", icon=":bar_chart:", default=True),
-        st.Page("pages/02_explore.py", title="Exploration", icon=":mag:", default=False),
-        st.Page("pages/03_run_diagnostics.py", title="Diagnostics / Run Health", icon=":clipboard:", default=False),
-        st.Page("pages/04_export.py", title="Export", icon=":package:", default=False),
+        st.Page("pages/01_executive_overview.py", title="Executive Overview", icon="📊", default=True),
+        st.Page("pages/02_explore.py", title="Exploration", icon="🔎", default=False),
+        st.Page("pages/03_run_diagnostics.py", title="Diagnostics / Run Health", icon="🩺", default=False),
+        st.Page("pages/04_export.py", title="Export", icon="📦", default=False),
     ]
     return st.navigation(pages, position="top", expanded=True)
 
