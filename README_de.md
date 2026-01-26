@@ -1,3 +1,4 @@
+
 # Agentic ELT Data Warehouse
 
 🇺🇸 **[English Version](README.md)**
@@ -7,14 +8,17 @@ Dieses Repository enthält eine produktionsreife agentic ELT/Analytics-Pipeline,
 ## 🚀 Schnellstart
 
 ### Fork & Clone
+
 1. Forken Sie dieses Repository zu Ihrem GitHub-Account
 2. Klonen Sie Ihren Fork lokal:
+
 ```bash
 git clone https://github.com/YOUR_USERNAME/agentic-elt-data-warehouse.git
 cd agentic-elt-data-warehouse
 ```
 
 ### Voraussetzungen
+
 - **Python 3.8+** (getestet mit Python 3.12)
 - **OpenAI API Key** (für LLM-Agents)
 - **Git** für Versionskontrolle
@@ -22,6 +26,7 @@ cd agentic-elt-data-warehouse
 ### Installation
 
 1. **Virtuelle Umgebung erstellen:**
+
 ```bash
 python -m venv venv
 # Windows
@@ -31,11 +36,13 @@ source venv/bin/activate
 ```
 
 2. **Abhängigkeiten installieren:**
+
 ```bash
 pip install -r requirements.txt
 ```
 
 3. **Umgebungsvariablen einrichten:**
+
 ```bash
 # Beispiel-Umgebungsdatei kopieren
 cp configs\.env.example .env
@@ -44,7 +51,9 @@ cp configs\.env.example .env
 ```
 
 ### Beispieldatensatz
+
 Das Repository enthält einen vollständigen Beispieldatensatz im `raw/` Verzeichnis:
+
 - **CRM-Daten** (`raw/source_crm/`): Kundeninformationen, Produktdetails, Verkaufsdaten
 - **ERP-Daten** (`raw/source_erp/`): Zusätzliche Kundendaten, Standortinformationen, Produktkategorien, Transaktionen
 
@@ -53,31 +62,34 @@ Dieser synthetische Datensatz repräsentiert die Datenstruktur eines typischen m
 ## 🏃♂️ Pipeline ausführen
 
 Führen Sie die komplette ELT-Pipeline aus:
+
 ```bash
 python .\src\runs\start_run.py
 ```
 
 ### Was passiert
+
 Die Pipeline führt diese Schritte automatisch aus:
 
 1. **🥉 Bronze Layer** - Rohdatenaufnahme
+
    - Kopiert CSV-Dateien aus `raw/` Verzeichnissen
    - Validiert Datenintegrität mit Checksummen
    - Erstellt unveränderliche Snapshots
-
 2. **🥈 Silver Layer** - Datenbereinigung & Standardisierung
+
    - LLM-Agents analysieren Datenqualitätsprobleme
    - Generieren Python-Code für Datenbereinigung
    - Führen Transformationen automatisch aus
    - Behandeln fehlende Werte, Datentypen, Formatierung
-
 3. **🥇 Gold Layer** - Business Marts Erstellung
+
    - LLM-Agents entwerfen Star-Schema
    - Generieren Dimensions- und Fact-Tabellen
    - Erstellen Business-KPI-Aggregationen
    - Bauen analytics-bereite Datensätze
-
 4. **📊 Zusammenfassungsbericht** - Ausführungszusammenfassung
+
    - Pipeline-Ausführungsmetriken
    - Datenqualitätsbewertungen
    - Generierte Code-Dokumentation
@@ -152,10 +164,13 @@ artifacts/
 ## 🔧 Konfigurationsoptionen
 
 ### Inkrementelle Verarbeitung
+
 Die Pipeline erkennt automatisch unveränderte Rohdaten und überspringt die Verarbeitung, wenn keine neuen Daten verfügbar sind. Dies spart Zeit und Ressourcen bei nachfolgenden Läufen mit identischen Eingabedateien.
 
 ### Umgebungsvariablen
+
 Wichtige Konfiguration in `.env`:
+
 ```bash
 OPENAI_API_KEY=your_key_here          # Erforderlich für LLM-Agents
 ORCHESTRATOR_RUN_ID=custom_run_id     # Optional: benutzerdefinierte Run-ID
@@ -164,11 +179,13 @@ ORCHESTRATOR_RUN_ID=custom_run_id     # Optional: benutzerdefinierte Run-ID
 ## 🧪 Testen
 
 Führen Sie die komplette Test-Suite aus:
+
 ```bash
 pytest -q
 ```
 
 Test-Kategorien:
+
 - **Unit-Tests** - Einzelkomponenten-Tests
 - **Integrationstests** - End-to-End-Pipeline-Validierung
 - **Vertragstests** - Datenschema-Validierung
@@ -177,11 +194,13 @@ Test-Kategorien:
 ## 🏗️ Architektur
 
 ### Agentic-Komponenten
+
 - **Draft Agents** - Analysieren Daten und generieren Transformationscode
 - **Builder Agents** - Verfeinern und optimieren generierten Code
 - **Quality Agents** - Validieren Code-Qualität und Performance
 
 ### Datenfluss
+
 ```
 Rohdaten → Bronze (Aufnahme) → Silver (Bereinigung) → Gold (Business-Logik) → Berichte
      ↓           ↓                    ↓                    ↓
@@ -189,21 +208,67 @@ Rohdaten → Bronze (Aufnahme) → Silver (Bereinigung) → Gold (Business-Logik
 ```
 
 ### Hauptmerkmale
+
 - **Deterministische Ausführung** - Gleiche Eingaben produzieren identische Ausgaben
 - **Audit-Trail** - Vollständige Lineage-Verfolgung
 - **Fehlerbehandlung** - Elegante Fehlerwiederherstellung
 - **Inkrementelle Verarbeitung** - Überspringen unveränderter Daten
-- **DSGVO-Konformität** - PII-Behandlung und Pseudonymisierung
+- **Datenschutz & Governance** - PII-Erkennung, Pseudonymisierung/Redaktion, minimaler Prompt-/Log-Umfang (siehe „Datenschutz & EU AI Act“)
+
+## 🔐 Datenschutz & EU AI Act (EU/DE)
+
+> Hinweis: Dieser Abschnitt ist eine praxisnahe Orientierung und **keine Rechtsberatung**. Prüfen Sie Anforderungen mit Ihrem/ Ihrer Datenschutzbeauftragten und ggf. Rechtsberatung.
+
+Dieses Projekt ist mit **synthetischen Beispieldaten** ausgestattet. Sobald Sie jedoch echte Daten verarbeiten (insb. Kunden-, Mitarbeiter- oder Transaktionsdaten), müssen Sie typischerweise **DSGVO/BDSG** und – je nach Use-Case – Vorgaben aus dem **EU AI Act** berücksichtigen.
+
+### DSGVO: typische Pflichten bei LLM-gestützter Datenanalyse
+
+- **Datenklassifizierung & PII**: Identifizieren Sie personenbezogene Daten (direkt/indirekt) und sensible Daten (z. B. Gesundheit, Gewerkschaft, biometrisch).
+- **Rechtsgrundlage & Zweckbindung**: Dokumentieren Sie Zweck, Rechtsgrundlage (Art. 6 DSGVO) und ggf. Art. 9 DSGVO.
+- **Auftragsverarbeitung**: Nutzen Sie bei externen LLM-Providern i. d. R. einen **AV-Vertrag** (Art. 28 DSGVO) inkl. Subprozessoren-Liste.
+- **Drittlandtransfer**: Wenn Verarbeitung außerhalb EU/EWR möglich ist, prüfen Sie geeignete Garantien (z. B. SCC) und Transfer-Risiken.
+- **Datenschutz durch Technikgestaltung**: Datenminimierung, Pseudonymisierung/Anonymisierung, Zugriffskontrollen, Verschlüsselung, Logging nur wenn nötig.
+- **Lösch- & Aufbewahrungskonzept**: Definieren Sie Retention für Artefakte/Logs (inkl. Prompt-/Response-Logs).
+- **DSFA (DPIA)**: Erwägen/prüfen Sie eine Datenschutz-Folgenabschätzung bei hohem Risiko (z. B. Profiling, große Mengen, sensible Daten).
+
+### Empfohlene technische Maßnahmen in dieser Pipeline
+
+- **Keine Roh-PII an das LLM senden**: Reduzieren Sie Eingaben auf das notwendige Minimum (z. B. Schema/Statistiken statt Rohzeilen).
+- **Pseudonymisierung vor LLM-Schritten**: Hashing/Tokenisierung stabiler Identifier (z. B. customer_id), Maskierung freier Textfelder.
+- **Prompt-/Log-Redaktion**: Wenn LLM-Interaktionen geloggt werden, PII konsequent entfernen; Zugriff auf Logs beschränken.
+- **Secrets-Handling**: API Keys ausschließlich über `.env`/Secret-Store, niemals committen.
+- **Artefakte schützen**: `artifacts/` enthält potenziell auswertbare Daten – behandeln Sie das Verzeichnis wie produktive Daten (Rechte, Verschlüsselung, Retention).
+
+### EU AI Act: wann wird es relevant?
+
+Der EU AI Act ist **risikobasiert**. Für reine interne Analyseunterstützung ist es häufig *nicht* „High-Risk“. **High-Risk** kann es werden, wenn Modell-Outputs in Entscheidungen über Personen einfließen (z. B. HR, Kreditwürdigkeit/Scoring, Zugang zu Leistungen) oder wenn ein regulierter Anwendungsfall vorliegt.
+
+Praktische Mindestmaßnahmen, die Sie im Projekt festhalten sollten:
+
+- **Intended Use** (Zweck & Grenzen): Wofür darf das System genutzt werden, wofür nicht?
+- **Human Oversight**: Wer prüft kritische Outputs, bevor sie operationalisiert werden?
+- **Qualität & Monitoring**: Validierung (Halluzinationen, Datenqualität), Tests, Drift-/Fehler-Monitoring.
+- **Transparenz**: Kennzeichnen Sie KI-unterstützte Inhalte/Entscheidungsgrundlagen dort, wo es erforderlich ist.
+
+### Kurz-Checkliste vor Produktivbetrieb
+
+- [ ] PII/Spezialkategorien identifiziert und minimiert
+- [ ] AV-Vertrag / Subprozessoren / Transfermechanismen geprüft
+- [ ] Retention/Löschkonzept für `artifacts/` und Logs definiert
+- [ ] Prompt-/Log-Redaktion oder „No-logging“ umgesetzt
+- [ ] Intended Use + Human-in-the-loop für kritische Use-Cases dokumentiert
 
 ## 📊 Beispieldaten-Übersicht
 
 Der enthaltene Datensatz simuliert:
+
 - **~1000 Kunden** über mehrere Segmente
 - **~50 Produkte** in verschiedenen Kategorien
 - **~5000 Verkaufstransaktionen** über Zeiträume
 - **Mehrere Datenqualitätsprobleme** zum Testen der Bereinigungslogik
 
 Daten enthalten absichtliche Qualitätsprobleme:
+
 - Fehlende Werte
 - Inkonsistente Formatierung
 - Doppelte Datensätze
@@ -212,6 +277,7 @@ Daten enthalten absichtliche Qualitätsprobleme:
 ## 🔍 Monitoring & Observability
 
 Jeder Lauf generiert umfassende Monitoring-Daten:
+
 - **Ausführungsmetriken** - Laufzeit, Speicherverbrauch, Erfolgsraten
 - **Datenqualitäts-Scores** - Vollständigkeit, Gültigkeit, Konsistenz
 - **Code-Generierungslogs** - LLM-Interaktionen und Entscheidungen
@@ -234,24 +300,31 @@ Dieses Projekt ist unter der MIT-Lizenz lizenziert - siehe die [LICENSE](LICENSE
 ### Häufige Probleme
 
 **Fehlender OpenAI API Key:**
+
 ```
 RuntimeError: Missing OPEN_AI_KEY or OPENAI_API_KEY in .env
 ```
+
 Lösung: OpenAI API Key zur `.env` Datei hinzufügen
 
 **Import-Fehler:**
+
 ```
 ModuleNotFoundError: No module named 'xyz'
 ```
+
 Lösung: Sicherstellen, dass virtuelle Umgebung aktiviert und Abhängigkeiten installiert sind
 
 **Berechtigungsfehler:**
+
 ```
 PermissionError: [Errno 13] Permission denied
 ```
+
 Lösung: Dateiberechtigungen prüfen und Schreibzugriff auf `artifacts/` Verzeichnis sicherstellen
 
 ### Hilfe erhalten
+
 - Bestehende [Issues](https://github.com/YOUR_USERNAME/agentic-elt-data-warehouse/issues) prüfen
 - Ausführungslogs in `artifacts/orchestrator/*/logs/` überprüfen
 - Debug-Logging durch Setzen von `LOG_LEVEL=DEBUG` in `.env` aktivieren
